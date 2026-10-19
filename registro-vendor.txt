@@ -1,0 +1,35 @@
+
+> pliego-pdf@1.0.0 vendor
+> node scripts/vendor.js
+
+Librerías:
+  ok  pdf.min.js
+  ok  pdf.worker.min.js
+  ok  pdf-lib.min.js
+  ok  jszip.min.js
+  ok  xlsx.full.min.js
+  ok  tesseract/tesseract.min.js
+  ok  tesseract/worker.min.js
+  ok  tesseract-core/tesseract-core-lstm.js
+  ok  tesseract-core/tesseract-core-lstm.wasm
+  ok  tesseract-core/tesseract-core-lstm.wasm.js
+  ok  tesseract-core/tesseract-core-simd-lstm.js
+  ok  tesseract-core/tesseract-core-simd-lstm.wasm
+  ok  tesseract-core/tesseract-core-simd-lstm.wasm.js
+  ok  tesseract-core/tesseract-core-simd.js
+  ok  tesseract-core/tesseract-core-simd.wasm
+  ok  tesseract-core/tesseract-core-simd.wasm.js
+  ok  tesseract-core/tesseract-core.js
+  ok  tesseract-core/tesseract-core.wasm
+  ok  tesseract-core/tesseract-core.wasm.js
+Tipografías:
+  ok  fonts/ibm-plex-sans-latin-400-normal.woff2
+  ok  fonts/ibm-plex-sans-latin-500-normal.woff2
+  ok  fonts/ibm-plex-sans-latin-600-normal.woff2
+  ok  fonts/ibm-plex-mono-latin-500-normal.woff2
+  ok  fonts/bricolage-grotesque-latin-600-normal.woff2
+  ok  fonts/bricolage-grotesque-latin-800-normal.woff2
+Idiomas del OCR:
+  ok  lang/spa (2.1 MB)
+  ok  lang/eng (3.0 MB)
+Listo.

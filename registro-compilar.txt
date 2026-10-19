@@ -1,0 +1,79 @@
+  • electron-builder  version=24.13.3 os=10.0.26100
+  • loaded configuration  file=package.json ("build" field)
+  • rebuilding native dependencies  dependencies=canvas@2.11.2 platform=win32 arch=x64
+  ⨯ cannot execute  cause=exit status 1
+                    errorOut=npm error code 1
+    npm error path D:\a\pliego-pdf\pliego-pdf\node_modules\canvas
+    npm error command failed
+    npm error command C:\Windows\system32\cmd.exe /d /s /c node-pre-gyp install --fallback-to-build --update-binary
+    npm error Failed to execute 'C:\hostedtoolcache\windows\node\20.20.2\x64\node.exe C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\node_modules\node-gyp\bin\node-gyp.js configure --fallback-to-build --update-binary --module=D:\a\pliego-pdf\pliego-pdf\node_modules\canvas\build\Release\canvas.node --module_name=canvas --module_path=D:\a\pliego-pdf\pliego-pdf\node_modules\canvas\build\Release --napi_version=9 --node_abi_napi=napi --napi_build_version=0 --node_napi_label=electron-v31.7' (1)
+    npm error node-pre-gyp info it worked if it ends with ok
+    npm error node-pre-gyp info using node-pre-gyp@1.0.11
+    npm error node-pre-gyp info using node@20.20.2 | win32 | x64
+    npm error node-pre-gyp http GET https://github.com/Automattic/node-canvas/releases/download/v2.11.2/canvas-v2.11.2-electron-v31.7-win32-unknown-x64.tar.gz
+    npm error node-pre-gyp ERR! install response status 404 Not Found on https://github.com/Automattic/node-canvas/releases/download/v2.11.2/canvas-v2.11.2-electron-v31.7-win32-unknown-x64.tar.gz 
+    npm error node-pre-gyp WARN Pre-built binaries not installable for canvas@2.11.2 and electron@31.7.7 (electron-v31.7 ABI, unknown) (falling back to source compile with node-gyp) 
+    npm error node-pre-gyp WARN Hit error response status 404 Not Found on https://github.com/Automattic/node-canvas/releases/download/v2.11.2/canvas-v2.11.2-electron-v31.7-win32-unknown-x64.tar.gz 
+    npm error gyp info it worked if it ends with ok
+    npm error gyp info using node-gyp@10.1.0
+    npm error gyp info using node@20.20.2 | win32 | x64
+    npm error gyp info ok 
+    npm error gyp info it worked if it ends with ok
+    npm error gyp info using node-gyp@10.1.0
+    npm error gyp info using node@20.20.2 | win32 | x64
+    npm error gyp info find Python using Python version 3.14.8 found at "C:\hostedtoolcache\windows\Python\3.14.8\x64\python.exe"
+    npm error gyp http GET https://electronjs.org/headers/v31.7.7/node-v31.7.7-headers.tar.gz
+    npm error gyp http 200 https://artifacts.electronjs.org/headers/dist/v31.7.7/node-v31.7.7-headers.tar.gz
+    npm error gyp http GET https://electronjs.org/headers/v31.7.7/SHASUMS256.txt
+    npm error gyp http GET https://electronjs.org/headers/v31.7.7/win-x64/node.lib
+    npm error gyp http 200 https://artifacts.electronjs.org/headers/dist/v31.7.7/SHASUMS256.txt
+    npm error gyp http 200 https://artifacts.electronjs.org/headers/dist/v31.7.7/win-x64/node.lib
+    npm error gyp ERR! find VS 
+    npm error gyp ERR! find VS msvs_version not set from command line or npm config
+    npm error gyp ERR! find VS VCINSTALLDIR not set, not running in VS Command Prompt
+    npm error gyp ERR! find VS could not use PowerShell to find Visual Studio 2017 or newer, try re-running with '--loglevel silly' for more details.
+    npm error gyp ERR! find VS 
+    npm error gyp ERR! find VS Failure details: RangeError [ERR_CHILD_PROCESS_STDIO_MAXB
+    npm error gyp ERR! find VS unknown version "undefined" found at "C:\Program Files\Microsoft Visual Studio\18\Enterprise"
+    npm error gyp ERR! find VS could not find a version of Visual Studio 2017 or newer to use
+    npm error gyp ERR! find VS not looking for VS2017 as it is only supported up to Node.js 21
+    npm error gyp ERR! find VS not looking for VS2017 as it is only supported up to Node.js 21
+    npm error gyp ERR! find VS not looking for VS2015 as it is only supported up to Node.js 18
+    npm error gyp ERR! find VS not looking for VS2013 as it is only supported up to Node.js 8
+    npm error gyp ERR! find VS 
+    npm error gyp ERR! find VS **************************************************************
+    npm error gyp ERR! find VS You need to install the latest version of Visual Studio
+    npm error gyp ERR! find VS including the "Desktop development with C++" workload.
+    npm error gyp ERR! find VS For more information consult the documentation at:
+    npm error gyp ERR! find VS https://github.com/nodejs/node-gyp#on-windows
+    npm error gyp ERR! find VS **************************************************************
+    npm error gyp ERR! find VS 
+    npm error gyp ERR! configure error 
+    npm error gyp ERR! stack Error: Could not find any Visual Studio installation to use
+    npm error gyp ERR! stack at VisualStudioFinder.fail (C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\node_modules\node-gyp\lib\find-visualstudio.js:116:11)
+    npm error gyp ERR! stack at VisualStudioFinder.findVisualStudio (C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\node_modules\node-gyp\lib\find-visualstudio.js:72:17)
+    npm error gyp ERR! stack at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    npm error gyp ERR! stack at async createBuildDir (C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\node_modules\node-gyp\lib\configure.js:95:26)
+    npm error gyp ERR! stack at async run (C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\node_modules\node-gyp\bin\node-gyp.js:81:18)
+    npm error gyp ERR! System Windows_NT 10.0.26100
+    npm error gyp ERR! command "C:\\hostedtoolcache\\windows\\node\\20.20.2\\x64\\node.exe" "C:\\hostedtoolcache\\windows\\node\\20.20.2\\x64\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js" "configure" "--fallback-to-build" "--update-binary" "--module=D:\\a\\pliego-pdf\\pliego-pdf\\node_modules\\canvas\\build\\Release\\canvas.node" "--module_name=canvas" "--module_path=D:\\a\\pliego-pdf\\pliego-pdf\\node_modules\\canvas\\build\\Release" "--napi_version=9" "--node_abi_napi=napi" "--napi_build_version=0" "--node_napi_label=electron-v31.7"
+    npm error gyp ERR! cwd D:\a\pliego-pdf\pliego-pdf\node_modules\canvas
+    npm error gyp ERR! node -v v20.20.2
+    npm error gyp ERR! node-gyp -v v10.1.0
+    npm error gyp ERR! not ok 
+    npm error node-pre-gyp ERR! build error 
+    npm error node-pre-gyp ERR! stack Error: Failed to execute 'C:\hostedtoolcache\windows\node\20.20.2\x64\node.exe C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\node_modules\node-gyp\bin\node-gyp.js configure --fallback-to-build --update-binary --module=D:\a\pliego-pdf\pliego-pdf\node_modules\canvas\build\Release\canvas.node --module_name=canvas --module_path=D:\a\pliego-pdf\pliego-pdf\node_modules\canvas\build\Release --napi_version=9 --node_abi_napi=napi --napi_build_version=0 --node_napi_label=electron-v31.7' (1)
+    npm error node-pre-gyp ERR! stack     at ChildProcess.<anonymous> (D:\a\pliego-pdf\pliego-pdf\node_modules\@mapbox\node-pre-gyp\lib\util\compile.js:89:23)
+    npm error node-pre-gyp ERR! stack     at ChildProcess.emit (node:events:524:28)
+    npm error node-pre-gyp ERR! stack     at maybeClose (node:internal/child_process:1104:16)
+    npm error node-pre-gyp ERR! stack     at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+    npm error node-pre-gyp ERR! System Windows_NT 10.0.26100
+    npm error node-pre-gyp ERR! command "C:\\hostedtoolcache\\windows\\node\\20.20.2\\x64\\node.exe" "D:\\a\\pliego-pdf\\pliego-pdf\\node_modules\\@mapbox\\node-pre-gyp\\bin\\node-pre-gyp" "install" "--fallback-to-build" "--update-binary"
+    npm error node-pre-gyp ERR! cwd D:\a\pliego-pdf\pliego-pdf\node_modules\canvas
+    npm error node-pre-gyp ERR! node -v v20.20.2
+    npm error node-pre-gyp ERR! node-pre-gyp -v v1.0.11
+    npm error node-pre-gyp ERR! not ok
+    npm error A complete log of this run can be found in: C:\npm\cache\_logs\2026-10-19T03_20_46_870Z-debug-0.log
+    
+                    command='C:\hostedtoolcache\windows\node\20.20.2\x64\node.exe' 'C:\hostedtoolcache\windows\node\20.20.2\x64\node_modules\npm\bin\npm-cli.js' rebuild canvas@2.11.2
+                    workingDir=
