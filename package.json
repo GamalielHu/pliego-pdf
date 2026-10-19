@@ -12,35 +12,58 @@
     "start": "npm run vendor && electron .",
     "dist": "npm run vendor && electron-builder --win --publish never"
   },
-  "dependencies": {
-    "pdfjs-dist": "3.11.174",
+  "dependencies": {},
+  "devDependencies": {
+    "@fontsource/bricolage-grotesque": "^5.0.0",
+    "@fontsource/ibm-plex-mono": "^5.0.0",
+    "@fontsource/ibm-plex-sans": "^5.0.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "jszip": "3.10.1",
     "pdf-lib": "1.17.1",
+    "pdfjs-dist": "3.11.174",
     "tesseract.js": "5.1.1",
     "tesseract.js-core": "^5.1.0",
-    "xlsx": "0.18.5",
-    "jszip": "3.10.1",
-    "@fontsource/ibm-plex-sans": "^5.0.0",
-    "@fontsource/ibm-plex-mono": "^5.0.0",
-    "@fontsource/bricolage-grotesque": "^5.0.0"
-  },
-  "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "xlsx": "0.18.5"
   },
   "build": {
     "appId": "bo.pliego.editorpdf",
     "productName": "Pliego",
     "asar": false,
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "build/icon.png", "www/**/*", "package.json"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "build/icon.png",
+      "www/**/*",
+      "package.json"
+    ],
     "fileAssociations": [
-      { "ext": "pdf", "name": "Documento PDF", "description": "Documento PDF", "role": "Editor" }
+      {
+        "ext": "pdf",
+        "name": "Documento PDF",
+        "description": "Documento PDF",
+        "role": "Editor"
+      }
     ],
     "win": {
       "icon": "build/icon.png",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -54,6 +77,8 @@
     },
     "portable": {
       "artifactName": "Pliego-Portable-${version}.${ext}"
-    }
+    },
+    "npmRebuild": false,
+    "nodeGypRebuild": false
   }
 }

@@ -22,7 +22,7 @@ jobs:
           node-version: 20
 
       - name: Instalar dependencias
-        run: npm install --no-audit --no-fund 2>&1 | tee registro-instalar.txt
+        run: npm install --no-audit --no-fund --omit=optional 2>&1 | tee registro-instalar.txt
 
       - name: Copiar librerías e idiomas del OCR
         run: npm run vendor 2>&1 | tee registro-vendor.txt
