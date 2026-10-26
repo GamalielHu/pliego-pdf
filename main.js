@@ -118,20 +118,36 @@ app.whenReady().then(() => {
     return true;
   });
 
-  // impresión nativa: ventana oculta que carga el editor en modo #print, dibuja el PDF y abre el diálogo de Windows
-  ipcMain.handle('pliego:print-pdf', (_e, pdfBytes, printOptions) => new Promise(resolve => {
+  // impresoras instaladas para el diálogo de impresión propio
+  ipcMain.handle('pliego:get-printers', async () => {
+    const list = await win.webContents.getPrintersAsync();
+    return list.map(p => ({ name: p.name, displayName: p.displayName || p.name, status: p.status, isDefault: !!p.isDefault }));
+  });
+
+  // impresión directa: ventana oculta que carga el editor en modo #print, dibuja las páginas y las manda a la impresora sin diálogos
+  ipcMain.handle('pliego:silent-print', (_e, o = {}) => new Promise(resolve => {
     const pw = new BrowserWindow({
       show: false, width: 900, height: 1200,
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false }
     });
     let done = false;
-    const finish = r => { if (done) return; done = true; resolve(r); if (!pw.isDestroyed()) pw.destroy(); };
-    pw.webContents.ipc.once('print-window-ready', () => pw.webContents.send('print-job', pdfBytes));
+    const finish = r => { if (done) return; done = true; clearTimeout(timer); resolve(r); if (!pw.isDestroyed()) pw.destroy(); };
+    const timer = setTimeout(() => finish({ ok: false, why: 'La impresora no respondió a tiempo.' }), 180000);
+    const layout = { mode: o.scaleMode || 'fit', scale: o.scaleFactor || 100, gray: o.color === false };
+    pw.webContents.ipc.once('print-window-ready', () => pw.webContents.send('print-job', o.pdfBuffer, layout));
     pw.webContents.ipc.once('print-rendered', () => {
-      pw.webContents.print({ silent: false, printBackground: true, ...(printOptions || {}) }, (ok, why) => finish({ ok, why: why || '' }));
+      const opts = {
+        silent: true, printBackground: true, margins: { marginType: 'none' },
+        copies: Math.max(1, o.copies | 0 || 1), collate: o.collate !== false,
+        landscape: !!o.landscape, color: o.color !== false, duplexMode: o.duplexMode || 'simplex'
+      };
+      if (o.deviceName) opts.deviceName = o.deviceName;
+      if (Array.isArray(o.pageRanges) && o.pageRanges.length) opts.pageRanges = o.pageRanges;
+      try { pw.webContents.print(opts, (ok, why) => finish({ ok, why: why || '' })); }
+      catch (e) { finish({ ok: false, why: e.message }); }
     });
     pw.webContents.on('render-process-gone', () => finish({ ok: false, why: 'La ventana de impresión se cerró.' }));
-    pw.on('closed', () => finish({ ok: false, why: '' }));
+    pw.on('closed', () => finish({ ok: false, why: 'La ventana de impresión se cerró.' }));
     pw.loadURL('app://pliego/index.html#print');
   }));
 
