@@ -8,5 +8,9 @@ contextBridge.exposeInMainWorld('pliego', {
   writeFile: (path, data) => ipcRenderer.invoke('write-file', { path, data }),
   reveal: (path) => ipcRenderer.invoke('reveal', path),
   onOpenFiles: (cb) => ipcRenderer.on('open-files', (_e, files) => cb(files)),
-  ready: () => ipcRenderer.send('renderer-ready')
+  ready: () => ipcRenderer.send('renderer-ready'),
+  printPdf: (pdfBytes, printOptions) => ipcRenderer.invoke('pliego:print-pdf', pdfBytes, printOptions),
+  onPrintJob: (cb) => ipcRenderer.once('print-job', (_e, bytes) => cb(bytes)),
+  printWindowReady: () => ipcRenderer.send('print-window-ready'),
+  printRendered: () => ipcRenderer.send('print-rendered')
 });
