@@ -240,6 +240,36 @@ input[type=range]{width:96px;accent-color:var(--accent)}
 #measure{position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none}
 #printArea{display:none}
 
+/* diálogo de impresión */
+#modal-impresion{position:fixed;inset:0;z-index:60;background:rgba(20,18,16,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+#modal-impresion[hidden]{display:none}
+.pm{background:var(--surface);color:var(--ink);border-radius:14px;box-shadow:var(--shadow);width:min(1000px,100%);height:min(700px,100%);display:grid;grid-template-columns:330px 1fr;grid-template-rows:auto 1fr auto;overflow:hidden}
+.pm>header{grid-column:1/-1;padding:14px 18px;border-bottom:1px solid var(--line)}
+.pm h2{margin:0;font:600 17px var(--f-display)}
+.pcfg{padding:14px 18px;overflow:auto;display:flex;flex-direction:column;gap:14px;border-right:1px solid var(--line)}
+.pcfg fieldset{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+.pcfg legend{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;padding:0}
+.pcfg label{display:flex;align-items:center;gap:8px;font-size:13px}
+.pcfg .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.pm select,.pm input[type=number],.pm input[type=text]{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;min-width:0}
+.pm select{width:100%}
+.pm input:disabled{opacity:.5}
+.pprev{background:var(--desk);display:flex;flex-direction:column;min-width:0;min-height:0}
+.pstage{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:16px;min-height:0}
+.pstage canvas{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.22);flex:none;margin:auto}
+.pnav{display:flex;align-items:center;gap:6px;justify-content:center;padding:8px;border-top:1px solid var(--line);background:var(--panel);font-size:13px}
+.pmeta{font-size:12px;color:var(--muted);padding:0 16px 10px;text-align:center;background:var(--panel)}
+.pm>footer{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line)}
+.pm .pst{flex:1;font-size:13px;color:var(--muted);min-width:0}
+.pm .pst.err{color:var(--danger)}
+.pbar{width:160px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.pbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+@media (max-width:760px){
+  #modal-impresion{padding:0}
+  .pm{grid-template-columns:1fr;grid-template-rows:auto auto 1fr auto;height:100%;border-radius:0}
+  .pcfg{border-right:0;border-bottom:1px solid var(--line);max-height:42vh}
+}
+
 /* small screens */
 @media (max-width:760px){
   .brand span,.docname,.hide-s{display:none}
@@ -258,7 +288,7 @@ input[type=range]{width:96px;accent-color:var(--accent)}
 @media print{
   @page{margin:0}
   html,body{height:auto;overflow:visible;background:#fff}
-  #app,.scrim,#org,#toast,.pop{display:none!important}
+  #app,.scrim,#org,#toast,.pop,#modal-impresion{display:none!important}
   #printArea{display:block}
   .pp{width:100%;height:100vh;display:flex;align-items:center;justify-content:center;break-after:page;page-break-after:always;overflow:hidden}
   .pp:last-child{break-after:auto;page-break-after:auto}
@@ -418,6 +448,40 @@ input[type=range]{width:96px;accent-color:var(--accent)}
     <button class="btn primary" data-org="done"><svg class="ic"><use href="#i-check"/></svg>Listo</button>
   </div>
   <div id="orgGrid"></div>
+</div>
+
+<div id="modal-impresion" hidden role="dialog" aria-modal="true" aria-labelledby="pmT">
+  <div class="pm">
+    <header><h2 id="pmT">Imprimir</h2></header>
+    <div class="pcfg">
+      <fieldset><legend>Impresora</legend><select id="pmPrinter"><option value="">Predeterminada del sistema</option></select></fieldset>
+      <fieldset><legend>Copias</legend><div class="row"><input type="number" id="pmCopies" min="1" max="999" value="1" style="width:80px" aria-label="Copias"><label><input type="checkbox" id="pmCollate" checked>Intercalar</label></div></fieldset>
+      <fieldset><legend>Páginas</legend>
+        <label><input type="radio" name="pmRange" value="all" checked>Todas las páginas</label>
+        <label><input type="radio" name="pmRange" value="cur">Página actual</label>
+        <label><input type="radio" name="pmRange" value="custom">Páginas específicas</label>
+        <input type="text" id="pmPages" placeholder="1-5, 8, 11-13" disabled aria-label="Páginas específicas">
+      </fieldset>
+      <fieldset><legend>Orientación</legend><div class="row"><label><input type="radio" name="pmOri" value="portrait" checked>Vertical</label><label><input type="radio" name="pmOri" value="landscape">Horizontal</label></div></fieldset>
+      <fieldset><legend>Color</legend><div class="row"><label><input type="radio" name="pmColor" value="color" checked>Color</label><label><input type="radio" name="pmColor" value="gray">Escala de grises</label></div></fieldset>
+      <fieldset><legend>Escala</legend>
+        <label><input type="radio" name="pmScale" value="fit" checked>Ajustar a márgenes</label>
+        <label><input type="radio" name="pmScale" value="actual">Tamaño real</label>
+        <label><input type="radio" name="pmScale" value="custom">Personalizada <input type="number" id="pmScaleV" min="10" max="400" value="100" style="width:72px" disabled aria-label="Escala en porcentaje">%</label>
+      </fieldset>
+      <fieldset><legend>Dúplex</legend><select id="pmDuplex"><option value="simplex">Una cara</option><option value="longEdge">Doble cara · voltear por borde largo</option><option value="shortEdge">Doble cara · voltear por borde corto</option></select></fieldset>
+    </div>
+    <div class="pprev">
+      <div class="pstage"><canvas id="pmCanvas" hidden></canvas><span id="pmWait" class="note">Preparando vista previa…</span></div>
+      <div class="pnav">
+        <button class="ib" id="pmPrev" aria-label="Página anterior"><svg class="ic"><use href="#i-left"/></svg></button><span id="pmPos">Página 1 de 1</span><button class="ib" id="pmNext" aria-label="Página siguiente"><svg class="ic"><use href="#i-right"/></svg></button>
+        <span class="tsep" style="align-self:stretch"></span>
+        <button class="ib" id="pmZOut" aria-label="Alejar"><svg class="ic"><use href="#i-minus"/></svg></button><span id="pmZoom">100%</span><button class="ib" id="pmZIn" aria-label="Acercar"><svg class="ic"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="pmeta" id="pmMeta"></div>
+    </div>
+    <footer><span class="pst" id="pmStatus"></span><div class="pbar" id="pmBar" hidden><i></i></div><button class="btn" id="pmCancel">Cancelar</button><button class="btn primary" id="pmOk" disabled><svg class="ic"><use href="#i-print"/></svg>Imprimir</button></footer>
+  </div>
 </div>
 
 <div id="toast" hidden></div>
@@ -2887,16 +2951,10 @@ async function noTextWarn() {
 async function printDoc() {
   if (!S.pages.length) { toast('Primero abre un documento.'); return; }
   finishEditing();
+  if (NATIVE && NATIVE.silentPrint) { openPrint(); return; }
   try {
     busy(true, 'Preparando la impresión…', '', 0);
     const bytes = await buildPdf(S.pages, { searchable: false, progress: (i, n) => busy(true, 'Preparando la impresión…', `Página ${i + 1} de ${n}`, (i / n) * 50) });
-    if (NATIVE && NATIVE.printPdf) {
-      busy(true, 'Abriendo el diálogo de impresión…', '', 100);
-      const r = await NATIVE.printPdf(bytes, {});
-      busy(false);
-      if (r && !r.ok && r.why && !/cancel/i.test(r.why)) toast('No se pudo imprimir: ' + r.why, true);
-      return;
-    }
     const urls = await fillPrintArea(bytes);
     busy(false);
     const clean = () => { el.printArea.innerHTML = ''; urls.forEach(u => URL.revokeObjectURL(u)); };
@@ -2904,7 +2962,7 @@ async function printDoc() {
     setTimeout(() => window.print(), 60);
   } catch (e) { fail(e); }
 }
-async function fillPrintArea(bytes) {
+async function fillPrintArea(bytes, layout = {}) {
     const lib = await ensurePdf();
     const doc = await lib.getDocument({ data: bytes, isEvalSupported: false }).promise;
     el.printArea.innerHTML = '';
@@ -2917,10 +2975,136 @@ async function fillPrintArea(bytes) {
       const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9)); c.width = c.height = 0;
       const u = URL.createObjectURL(b); urls.push(u);
       const d = div('pp'); const im = new Image(); im.src = u; d.appendChild(im); el.printArea.appendChild(d);
+      if (layout.gray) im.style.filter = 'grayscale(100%)';
+      if (layout.mode === 'actual' || layout.mode === 'custom') {
+        const k = layout.mode === 'custom' ? clamp(+layout.scale || 100, 10, 400) / 100 : 1;
+        Object.assign(im.style, { width: v1.width * k + 'pt', height: v1.height * k + 'pt', maxWidth: 'none', maxHeight: 'none' });
+      }
       await im.decode().catch(() => { });
     }
     return urls;
 }
+
+/* ---- diálogo de impresión propio (escritorio): impresión directa sin ventanas de Windows ---- */
+const PAPERS = [['Carta', 612, 792], ['A4', 595.28, 841.89], ['Oficio', 612, 935.43], ['Legal', 612, 1008], ['A3', 841.89, 1190.55], ['A5', 419.53, 595.28]];
+const paperName = (w, h) => { const a = Math.min(w, h), b = Math.max(w, h); const m = PAPERS.find(([, x, y]) => Math.abs(a - x) < 4 && Math.abs(b - y) < 4); return m ? m[0] : 'Personalizado'; };
+const ptMm = v => Math.round(v * 25.4 / 72);
+function parsePageRanges(s, n) {
+  const out = [];
+  for (const i of parseRange(s, n)) { const l = out[out.length - 1]; if (l && i === l.to + 1) l.to = i; else out.push({ from: i, to: i }); }
+  return out;
+}
+const PM = { bytes: null, doc: null, i: 0, zoom: 1, job: 0, sending: false, task: null };
+const pmEl = $('#modal-impresion');
+const pmv = id => $('#' + id, pmEl);
+const pmRadio = n => ($(`input[name="${n}"]:checked`, pmEl) || {}).value;
+const pmOk = () => { pmv('pmOk').disabled = !PM.doc || PM.sending; };
+function pmStatus(t, err, pct) {
+  pmv('pmStatus').textContent = t || ''; pmv('pmStatus').classList.toggle('err', !!err);
+  pmv('pmBar').hidden = pct == null; if (pct != null) $('i', pmv('pmBar')).style.width = clamp(pct, 0, 100) + '%';
+}
+async function openPrint() {
+  const job = ++PM.job;
+  PM.i = S.current; PM.zoom = 1; PM.bytes = null; PM.doc = null; PM.sending = false;
+  pmEl.hidden = false; pmOk(); pmStatus('');
+  pmv('pmCanvas').hidden = true; pmv('pmWait').hidden = false; pmv('pmWait').textContent = 'Preparando vista previa…'; pmv('pmMeta').textContent = '';
+  NATIVE.getPrinters().then(list => {
+    const sel = pmv('pmPrinter'), def = list.some(p => p.isDefault);
+    sel.innerHTML = (def ? '' : '<option value="">Predeterminada del sistema</option>') +
+      list.map(p => `<option value="${esc(p.name)}" ${p.isDefault ? 'selected' : ''}>${esc(p.displayName || p.name)}${p.isDefault ? ' (predeterminada)' : ''}</option>`).join('');
+  }).catch(() => { });
+  try {
+    const bytes = await buildPdf(S.pages, { searchable: false, progress: (i, n) => { if (job === PM.job) pmv('pmWait').textContent = `Preparando vista previa… página ${i + 1} de ${n}`; } });
+    if (job !== PM.job) return;
+    const lib = await ensurePdf();
+    const doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+    if (job !== PM.job) { doc.destroy(); return; }
+    PM.bytes = bytes; PM.doc = doc;
+    pmv('pmWait').hidden = true; pmv('pmCanvas').hidden = false; pmOk(); pmRender();
+  } catch (e) { if (job === PM.job) { console.error(e); pmv('pmWait').textContent = 'No se pudo preparar el documento: ' + (e.message || e); } }
+}
+function closePrint() {
+  PM.job++; pmEl.hidden = true;
+  if (PM.task) { try { PM.task.cancel(); } catch (e) { } PM.task = null; }
+  if (PM.doc) { PM.doc.destroy(); PM.doc = null; } PM.bytes = null;
+}
+async function pmRender() {
+  const doc = PM.doc; if (!doc || pmEl.hidden) return;
+  const n = doc.numPages; PM.i = clamp(PM.i, 0, n - 1);
+  const pg = await doc.getPage(PM.i + 1); if (doc !== PM.doc) return;
+  const v1 = pg.getViewport({ scale: 1 }), st = $('.pstage', pmEl);
+  const fit = Math.max(0.05, Math.min((st.clientWidth - 32) / v1.width, (st.clientHeight - 32) / v1.height));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), vp = pg.getViewport({ scale: fit * PM.zoom * dpr });
+  if (PM.task) { try { PM.task.cancel(); } catch (e) { } }
+  const c = document.createElement('canvas'); c.id = 'pmCanvas';
+  c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  c.style.width = vp.width / dpr + 'px'; c.style.height = vp.height / dpr + 'px';
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  const task = PM.task = pg.render({ canvasContext: ctx, viewport: vp });
+  try { await task.promise; } catch (e) { return; }
+  if (task !== PM.task || doc !== PM.doc) return;
+  PM.task = null;
+  c.style.filter = pmRadio('pmColor') === 'gray' ? 'grayscale(100%)' : '';
+  pmv('pmCanvas').replaceWith(c);
+  pmv('pmPos').textContent = `Página ${PM.i + 1} de ${n}`;
+  pmv('pmZoom').textContent = Math.round(PM.zoom * 100) + '%';
+  pmv('pmPrev').disabled = PM.i === 0; pmv('pmNext').disabled = PM.i >= n - 1;
+  const land = pmRadio('pmOri') === 'landscape', w = land ? Math.max(v1.width, v1.height) : Math.min(v1.width, v1.height), h = land ? Math.min(v1.width, v1.height) : Math.max(v1.width, v1.height);
+  const cnt = pmPages().length;
+  pmv('pmMeta').textContent = `${paperName(v1.width, v1.height)} · ${ptMm(w)} × ${ptMm(h)} mm · ${land ? 'Horizontal' : 'Vertical'} · ${cnt} página${cnt === 1 ? '' : 's'} a imprimir`;
+}
+function pmPages() {
+  const n = PM.doc ? PM.doc.numPages : 0, m = pmRadio('pmRange');
+  if (m === 'cur') return [PM.i];
+  if (m === 'custom') return parsePageRanges(pmv('pmPages').value, n).flatMap(r => Array.from({ length: r.to - r.from + 1 }, (_, k) => r.from + k));
+  return Array.from({ length: n }, (_, k) => k);
+}
+async function pmPrint() {
+  if (PM.sending || !PM.doc) return;
+  const ix = pmPages(), n = PM.doc.numPages;
+  if (!ix.length) { pmStatus('Escribe qué páginas quieres, por ejemplo 1-5, 8, 11-13.', true); return; }
+  PM.sending = true; pmOk();
+  const job = PM.job, printer = pmv('pmPrinter');
+  try {
+    pmStatus('Preparando páginas…', false, 15);
+    let bytes = PM.bytes;
+    if (ix.length !== n) {
+      const L = await ensureLib();
+      const src = await L.PDFDocument.load(PM.bytes), out = await L.PDFDocument.create();
+      (await out.copyPages(src, ix)).forEach(p => out.addPage(p));
+      bytes = await out.save();
+    }
+    pmStatus('Enviando a la impresora…', false, 55);
+    const sm = pmRadio('pmScale');
+    const r = await NATIVE.silentPrint({
+      pdfBuffer: bytes, deviceName: printer.value, copies: clamp(parseInt(pmv('pmCopies').value) || 1, 1, 999), collate: pmv('pmCollate').checked,
+      duplexMode: pmv('pmDuplex').value, landscape: pmRadio('pmOri') === 'landscape', color: pmRadio('pmColor') !== 'gray',
+      scaleMode: sm, scaleFactor: sm === 'custom' ? clamp(parseInt(pmv('pmScaleV').value) || 100, 10, 400) : 100
+    });
+    if (job !== PM.job) return;
+    if (r && r.ok) {
+      pmStatus('Enviado a la impresora.', false, 100);
+      const name = printer.selectedOptions[0] ? printer.selectedOptions[0].textContent : 'la impresora';
+      setTimeout(() => { if (job === PM.job) { closePrint(); toast(`${ix.length} página${ix.length === 1 ? '' : 's'} enviada${ix.length === 1 ? '' : 's'} a ${name}.`); } }, 700);
+    } else pmStatus('No se pudo imprimir: ' + ((r && r.why) || 'error desconocido'), true);
+  } catch (e) { console.error(e); if (job === PM.job) pmStatus('No se pudo imprimir: ' + (e.message || e), true); }
+  finally { PM.sending = false; pmOk(); }
+}
+pmEl.addEventListener('change', e => {
+  const t = e.target;
+  if (t.name === 'pmRange') { pmv('pmPages').disabled = t.value !== 'custom'; if (t.value === 'custom') pmv('pmPages').focus(); }
+  if (t.name === 'pmScale') pmv('pmScaleV').disabled = t.value !== 'custom';
+  pmStatus(''); pmJump(); pmRender();
+});
+const pmJump = () => { const ix = pmPages(); if (ix.length && !ix.includes(PM.i)) PM.i = ix[0]; };
+pmv('pmPages').addEventListener('input', () => { clearTimeout(PM.t); PM.t = setTimeout(() => { pmJump(); pmRender(); }, 250); });
+pmv('pmPrev').onclick = () => { PM.i--; pmRender(); };
+pmv('pmNext').onclick = () => { PM.i++; pmRender(); };
+pmv('pmZIn').onclick = () => { PM.zoom = Math.min(4, PM.zoom * 1.25); pmRender(); };
+pmv('pmZOut').onclick = () => { PM.zoom = Math.max(0.25, PM.zoom / 1.25); pmRender(); };
+pmv('pmCancel').onclick = closePrint;
+pmv('pmOk').onclick = pmPrint;
+window.addEventListener('resize', () => { if (!pmEl.hidden) { clearTimeout(PM.rz); PM.rz = setTimeout(pmRender, 150); } });
 
 /* ================================================================
    Documento de ejemplo
@@ -3068,7 +3252,7 @@ window.addEventListener('resize', () => { clearTimeout(window.__rz); window.__rz
 window.addEventListener('beforeunload', e => { if (S.dirty && S.pages.length) { e.preventDefault(); e.returnValue = ''; } });
 if (NATIVE && location.hash === '#print') {
   // ventana oculta de impresión: recibe el PDF, lo prepara y avisa al programa para abrir el diálogo nativo
-  NATIVE.onPrintJob(async bytes => { try { await fillPrintArea(bytes); } finally { NATIVE.printRendered(); } });
+  NATIVE.onPrintJob(async (bytes, layout) => { try { await fillPrintArea(bytes, layout); } finally { NATIVE.printRendered(); } });
   NATIVE.printWindowReady();
 } else if (NATIVE) {
   NATIVE.onOpenFiles(list => openNative(list));
@@ -3080,6 +3264,7 @@ if (NATIVE && location.hash === '#print') {
 document.addEventListener('keydown', e => {
   const mod = e.ctrlKey || e.metaKey;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName) || (S.editing && S.editing.n.contains(document.activeElement));
+  if (!pmEl.hidden) { if (e.key === 'Escape') closePrint(); else if (e.key === 'Enter' && !typing) pmPrint(); return; }
   if (mod && e.key.toLowerCase() === 'p') { e.preventDefault(); printDoc(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); if (e.shiftKey) openExport('pdf'); else quickSave(); return; }
   if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); pickOpen(); return; }
