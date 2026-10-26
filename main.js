@@ -118,6 +118,23 @@ app.whenReady().then(() => {
     return true;
   });
 
+  // impresión nativa: ventana oculta que carga el editor en modo #print, dibuja el PDF y abre el diálogo de Windows
+  ipcMain.handle('pliego:print-pdf', (_e, pdfBytes, printOptions) => new Promise(resolve => {
+    const pw = new BrowserWindow({
+      show: false, width: 900, height: 1200,
+      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false }
+    });
+    let done = false;
+    const finish = r => { if (done) return; done = true; resolve(r); if (!pw.isDestroyed()) pw.destroy(); };
+    pw.webContents.ipc.once('print-window-ready', () => pw.webContents.send('print-job', pdfBytes));
+    pw.webContents.ipc.once('print-rendered', () => {
+      pw.webContents.print({ silent: false, printBackground: true, ...(printOptions || {}) }, (ok, why) => finish({ ok, why: why || '' }));
+    });
+    pw.webContents.on('render-process-gone', () => finish({ ok: false, why: 'La ventana de impresión se cerró.' }));
+    pw.on('closed', () => finish({ ok: false, why: '' }));
+    pw.loadURL('app://pliego/index.html#print');
+  }));
+
   ipcMain.handle('reveal', (_e, p) => { shell.showItemInFolder(p); return true; });
 
   createWindow();
