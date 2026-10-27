@@ -2976,8 +2976,8 @@ async function fillPrintArea(bytes, layout = {}) {
     const lib = await ensurePdf();
     const doc = await lib.getDocument({ data: bytes, isEvalSupported: false }).promise;
     el.printArea.innerHTML = '';
-    const urls = [];
-    for (let i = 1; i <= doc.numPages; i++) {
+    const urls = [], list = layout.pages && layout.pages.length ? layout.pages.map(i => i + 1).filter(i => i <= doc.numPages) : Array.from({ length: doc.numPages }, (_, k) => k + 1);
+    for (const i of list) {
       busy(true, 'Preparando la impresión…', `Página ${i} de ${doc.numPages}`, 50 + (i / doc.numPages) * 48);
       const pg = await doc.getPage(i); const v1 = pg.getViewport({ scale: 1 });
       const sc = Math.min(200 / 72, Math.sqrt((isIOS ? 4e6 : 8e6) / (v1.width * v1.height)));
@@ -3009,7 +3009,7 @@ const PAPER = {
   Tabloid: { name: 'Tabloide', w: 792, h: 1224, size: 'Tabloid' }
 };
 const paperKey = (w, h) => { const a = Math.min(w, h), b = Math.max(w, h); return Object.keys(PAPER).find(k => Math.abs(a - PAPER[k].w) < 4 && Math.abs(b - PAPER[k].h) < 4) || null; };
-const pmAutoPaper = i => { if (!pmv('pmAuto').checked || !PM.sizes) return; const z = PM.sizes[i]; const k = z && paperKey(z[0], z[1]); if (k) pmv('print-page-size').value = k; };
+const pmAutoPaper = i => { if (!pmv('pmAuto').checked) return; const sp = S.pages[i], z = PM.sizes ? PM.sizes[i] : sp && (sp.rot % 180 ? [sp.h, sp.w] : [sp.w, sp.h]); const k = z && paperKey(z[0], z[1]); if (k) pmv('print-page-size').value = k; };
 function parsePageRanges(s, n) {
   const out = [];
   for (const i of parseRange(s, n)) { const l = out[out.length - 1]; if (l && i === l.to + 1) l.to = i; else out.push({ from: i, to: i }); }
@@ -3027,15 +3027,16 @@ function pmStatus(t, err, pct) {
 async function openPrint() {
   const job = ++PM.job;
   PM.i = S.current; PM.zoom = 1; PM.bytes = null; PM.doc = null; PM.sizes = null; PM.sending = false;
-  pmEl.hidden = false; pmOk(); pmStatus('');
+  pmEl.hidden = false; pmOk(); pmStatus('Preparando documento…');
   pmv('pmCanvas').hidden = true; pmv('pmWait').hidden = false; pmv('pmWait').textContent = 'Preparando vista previa…'; pmv('pmMeta').textContent = '';
+  pmAutoPaper(PM.i); pmRender();
   NATIVE.getPrinters().then(list => {
     const sel = pmv('pmPrinter'), def = list.some(p => p.isDefault);
     sel.innerHTML = (def ? '' : '<option value="">Predeterminada del sistema</option>') +
       list.map(p => `<option value="${esc(p.name)}" ${p.isDefault ? 'selected' : ''}>${esc(p.displayName || p.name)}${p.isDefault ? ' (predeterminada)' : ''}</option>`).join('');
   }).catch(() => { });
   try {
-    const bytes = await buildPdf(S.pages, { searchable: false, progress: (i, n) => { if (job === PM.job) pmv('pmWait').textContent = `Preparando vista previa… página ${i + 1} de ${n}`; } });
+    const bytes = await buildPdf(S.pages, { searchable: false, progress: (i, n) => { if (job === PM.job && !PM.sending) pmStatus(`Preparando documento… página ${i + 1} de ${n}`); } });
     if (job !== PM.job) return;
     const lib = await ensurePdf();
     const doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
@@ -3046,9 +3047,8 @@ async function openPrint() {
       PM.sizes = ld.getPages().map(p => { const b = p.getMediaBox(), r = (p.getRotation().angle || 0) % 180; return r ? [b.height, b.width] : [b.width, b.height]; });
     } catch (e) { PM.sizes = null; }
     if (job !== PM.job) return;
-    pmAutoPaper(PM.i);
-    pmv('pmWait').hidden = true; pmv('pmCanvas').hidden = false; pmOk(); pmRender();
-  } catch (e) { if (job === PM.job) { console.error(e); pmv('pmWait').textContent = 'No se pudo preparar el documento: ' + (e.message || e); } }
+    pmAutoPaper(PM.i); pmStatus(''); pmOk(); pmRender();
+  } catch (e) { if (job === PM.job) { console.error(e); pmStatus('No se pudo preparar el documento: ' + (e.message || e), true); } }
 }
 function closePrint() {
   PM.job++; pmEl.hidden = true;
@@ -3056,17 +3056,21 @@ function closePrint() {
   if (PM.doc) { PM.doc.destroy(); PM.doc = null; } PM.bytes = null;
 }
 async function pmRender() {
-  const doc = PM.doc; if (!doc || pmEl.hidden) return;
-  const n = doc.numPages; PM.i = clamp(PM.i, 0, n - 1);
-  const pg = await doc.getPage(PM.i + 1); if (doc !== PM.doc) return;
-  const v1 = pg.getViewport({ scale: 1 }), st = $('.pstage', pmEl);
-  // hoja destino según tamaño y orientación; la página se coloca encima con la escala elegida
+  const doc = PM.doc; if (pmEl.hidden || (!doc && !S.pages.length)) return;
+  const n = doc ? doc.numPages : S.pages.length; PM.i = clamp(PM.i, 0, n - 1);
+  // hoja destino según tamaño y orientación: el marco cambia al instante y luego PDF.js redibuja la página encima
   const land = pmRadio('pmOri') === 'landscape', pk = pmv('print-page-size').value, P = PAPER[pk] || PAPER.Letter;
-  const SW = land ? P.h : P.w, SH = land ? P.w : P.h;
+  const SW = land ? P.h : P.w, SH = land ? P.w : P.h, st = $('.pstage', pmEl);
+  const disp = Math.max(0.05, Math.min((st.clientWidth - 32) / SW, (st.clientHeight - 32) / SH)) * PM.zoom;
+  const cv0 = pmv('pmCanvas'); cv0.style.width = SW * disp + 'px'; cv0.style.height = SH * disp + 'px';
+  // mientras se arma el PDF final, la vista previa usa la página ya abierta en el editor
+  const sp = doc ? null : S.pages[PM.i];
+  const pg = doc ? await doc.getPage(PM.i + 1) : await getPage(sp); if (doc !== PM.doc) return;
+  const rot = doc ? undefined : ((pg.rotate || 0) + sp.rot) % 360;
+  const v1 = pg.getViewport({ scale: 1, rotation: rot });
   const sm = pmRadio('pmScale'), cust = pmv('pmCustom').checked, fitK = Math.min(SW / v1.width, SH / v1.height);
   const k = cust ? clamp(parseInt(pmv('pmScaleV').value) || 100, 25, 400) / 100 : sm === 'actual' ? 1 : sm === 'shrink' ? Math.min(1, fitK) : fitK;
-  const disp = Math.max(0.05, Math.min((st.clientWidth - 32) / SW, (st.clientHeight - 32) / SH)) * PM.zoom;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2), vp = pg.getViewport({ scale: disp * k * dpr });
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), vp = pg.getViewport({ scale: disp * k * dpr, rotation: rot });
   if (PM.task) { try { PM.task.cancel(); } catch (e) { } }
   const off = document.createElement('canvas');
   off.width = Math.ceil(vp.width); off.height = Math.ceil(vp.height);
@@ -3081,7 +3085,7 @@ async function pmRender() {
   const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.drawImage(off, (c.width - off.width) / 2, (c.height - off.height) / 2); off.width = off.height = 0;
   c.style.filter = pmRadio('pmColor') === 'gray' ? 'grayscale(100%)' : '';
-  pmv('pmCanvas').replaceWith(c);
+  pmv('pmCanvas').replaceWith(c); pmv('pmWait').hidden = true;
   pmv('pmPos').textContent = `Página ${PM.i + 1} de ${n}`;
   pmv('pmZoom').textContent = Math.round(PM.zoom * 100) + '%';
   pmv('pmPrev').disabled = PM.i === 0; pmv('pmNext').disabled = PM.i >= n - 1;
@@ -3089,7 +3093,7 @@ async function pmRender() {
   pmv('pmMeta').textContent = `Documento: ${paperName(z[0], z[1])} ${ptMm(z[0])} × ${ptMm(z[1])} mm · Papel: ${P.name} ${ptMm(SW)} × ${ptMm(SH)} mm (${land ? 'horizontal' : 'vertical'}) · Escala ${Math.round(k * 100)} % · Vista previa ${Math.round(disp * 100)} % · ${cnt} página${cnt === 1 ? '' : 's'} a imprimir`;
 }
 function pmPages() {
-  const n = PM.doc ? PM.doc.numPages : 0, m = pmRadio('pmRange');
+  const n = PM.doc ? PM.doc.numPages : S.pages.length, m = pmRadio('pmRange');
   if (m === 'cur') return [PM.i];
   if (m === 'custom') return parsePageRanges(pmv('pmPages').value, n).flatMap(r => Array.from({ length: r.to - r.from + 1 }, (_, k) => r.from + k));
   return Array.from({ length: n }, (_, k) => k);
@@ -3101,20 +3105,13 @@ async function pmPrint() {
   PM.sending = true; pmOk();
   const job = PM.job, printer = pmv('pmPrinter');
   try {
-    pmStatus('Preparando páginas…', false, 15);
-    let bytes = PM.bytes;
-    if (ix.length !== n) {
-      const L = await ensureLib();
-      const src = await L.PDFDocument.load(PM.bytes), out = await L.PDFDocument.create();
-      (await out.copyPages(src, ix)).forEach(p => out.addPage(p));
-      bytes = await out.save();
-    }
-    pmStatus('Enviando a la impresora…', false, 55);
+    const pageRanges = ix.length === n ? null : ix.reduce((a, i) => { const l = a[a.length - 1]; if (l && i === l.to + 1) l.to = i; else a.push({ from: i, to: i }); return a; }, []);
+    pmStatus('Enviando a la impresora…', false, 40);
     const sm = pmv('pmCustom').checked ? 'custom' : pmRadio('pmScale');
     pmAutoPaper(ix[0]);
     const pk = PAPER[pmv('print-page-size').value] || PAPER.Letter;
     const r = await NATIVE.silentPrint({
-      pdfBuffer: bytes, deviceName: printer.value, copies: clamp(parseInt(pmv('pmCopies').value) || 1, 1, 999), collate: pmv('pmCollate').checked,
+      pdfBuffer: PM.bytes, pageRanges, deviceName: printer.value, copies: clamp(parseInt(pmv('pmCopies').value) || 1, 1, 999), collate: pmv('pmCollate').checked,
       duplexMode: pmv('pmDuplex').value, landscape: pmRadio('pmOri') === 'landscape', color: pmRadio('pmColor') !== 'gray',
       scaleMode: sm, scaleFactor: sm === 'custom' ? clamp(parseInt(pmv('pmScaleV').value) || 100, 25, 400) : 100, pageSize: pk.size
     });
@@ -3292,7 +3289,8 @@ window.addEventListener('resize', () => { clearTimeout(window.__rz); window.__rz
 window.addEventListener('beforeunload', e => { if (S.dirty && S.pages.length) { e.preventDefault(); e.returnValue = ''; } });
 if (NATIVE && location.hash === '#print') {
   // ventana oculta de impresión: recibe el PDF, lo prepara y avisa al programa para abrir el diálogo nativo
-  NATIVE.onPrintJob(async (bytes, layout) => { try { await fillPrintArea(bytes, layout); } finally { NATIVE.printRendered(); } });
+  let printUrls = [];
+  NATIVE.onPrintJob(async (bytes, layout) => { try { printUrls.forEach(u => URL.revokeObjectURL(u)); printUrls = []; printUrls = await fillPrintArea(bytes, layout); } finally { NATIVE.printRendered(); } });
   NATIVE.printWindowReady();
 } else if (NATIVE) {
   NATIVE.onOpenFiles(list => openNative(list));
