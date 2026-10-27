@@ -37,6 +37,63 @@ function sendFiles(paths) {
   else pending.push(...paths);
 }
 
+// ---- impresión: caché de impresoras y ventana de impresión persistente ----
+let cachedPrinters = [], printersBusy = null;
+let printWorker = null, printWorkerReady = null, printQueue = Promise.resolve();
+function refreshPrinters() {
+  if (printersBusy) return printersBusy;
+  if (!win || win.isDestroyed()) return Promise.resolve(cachedPrinters);
+  printersBusy = win.webContents.getPrintersAsync()
+    .then(list => (cachedPrinters = list.map(p => ({ name: p.name, displayName: p.displayName || p.name, status: p.status, isDefault: !!p.isDefault }))))
+    .catch(() => cachedPrinters)
+    .finally(() => { printersBusy = null; });
+  return printersBusy;
+}
+function getPrintWorker() {
+  if (printWorker && !printWorker.isDestroyed()) return printWorkerReady;
+  const w = printWorker = new BrowserWindow({
+    show: false, width: 900, height: 1200,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false, backgroundThrottling: false }
+  });
+  printWorkerReady = new Promise(res => w.webContents.ipc.once('print-window-ready', () => res(w)));
+  w.webContents.on('render-process-gone', () => { if (!w.isDestroyed()) w.destroy(); });
+  w.on('closed', () => { if (printWorker === w) printWorker = null; });
+  w.loadURL('app://pliego/index.html#print');
+  return printWorkerReady;
+}
+function printJob(o) {
+  return new Promise(resolve => {
+    let done = false, w = null;
+    const finish = r => {
+      if (done) return; done = true; clearTimeout(timer);
+      if (w && !w.isDestroyed()) { w.removeListener('closed', onClosed); w.webContents.ipc.removeListener('print-rendered', onRendered); }
+      resolve(r);
+    };
+    const timer = setTimeout(() => finish({ ok: false, why: 'La impresora no respondió a tiempo.' }), 180000);
+    const onClosed = () => finish({ ok: false, why: 'La ventana de impresión se cerró.' });
+    const onRendered = () => {
+      const opts = {
+        silent: true, printBackground: true, margins: { marginType: 'none' },
+        copies: Math.max(1, o.copies | 0 || 1), collate: o.collate !== false,
+        landscape: !!o.landscape, color: o.color !== false, duplexMode: o.duplexMode || 'simplex'
+      };
+      if (o.deviceName) opts.deviceName = o.deviceName;
+      if (o.pageSize) opts.pageSize = o.pageSize;
+      if (o.paperTray != null && o.paperTray !== '') opts.paperTray = o.paperTray;
+      try { w.webContents.print(opts, (ok, why) => finish({ ok, why: why || '' })); }
+      catch (e) { finish({ ok: false, why: e.message }); }
+    };
+    // el rango se resuelve al dibujar: la ventana solo prepara las páginas pedidas, sin copiar el PDF
+    const pages = Array.isArray(o.pageRanges) ? o.pageRanges.flatMap(r => Array.from({ length: Math.max(0, r.to - r.from + 1) }, (_, k) => r.from + k)) : null;
+    const layout = { mode: o.scaleMode || 'fit', scale: o.scaleFactor || 100, gray: o.color === false, pages };
+    getPrintWorker().then(pw => {
+      if (done) return;
+      w = pw; w.once('closed', onClosed); w.webContents.ipc.once('print-rendered', onRendered);
+      w.webContents.send('print-job', o.pdfBuffer, layout);
+    });
+  });
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1360, height: 900, minWidth: 720, minHeight: 520,
@@ -73,7 +130,8 @@ function createWindow() {
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type === 'keyDown' && input.key === 'F12') { win.webContents.toggleDevTools(); e.preventDefault(); }
   });
-  win.on('closed', () => { win = null; rendererReady = false; });
+  win.on('closed', () => { win = null; rendererReady = false; if (printWorker && !printWorker.isDestroyed()) printWorker.destroy(); });
+  win.webContents.once('did-finish-load', () => { refreshPrinters(); setTimeout(getPrintWorker, 1500); });
 }
 
 app.whenReady().then(() => {
@@ -118,44 +176,20 @@ app.whenReady().then(() => {
     return true;
   });
 
-  // impresoras instaladas para el diálogo de impresión propio
-  ipcMain.handle('pliego:get-printers', async () => {
-    const list = await win.webContents.getPrintersAsync();
-    return list.map(p => ({ name: p.name, displayName: p.displayName || p.name, status: p.status, isDefault: !!p.isDefault }));
+  // impresoras: lista en memoria, se actualiza en segundo plano y nunca bloquea el diálogo
+  ipcMain.handle('pliego:get-printers', async (_e, refresh) => {
+    if (!cachedPrinters.length) return (await refreshPrinters()) || [];
+    if (refresh) refreshPrinters();
+    return cachedPrinters;
   });
 
-  // impresión directa: ventana oculta que carga el editor en modo #print, dibuja las páginas y las manda a la impresora sin diálogos
-  ipcMain.handle('pliego:silent-print', (_e, o = {}) => new Promise(resolve => {
-    const pw = new BrowserWindow({
-      show: false, width: 900, height: 1200,
-      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false }
-    });
-    let done = false;
-    const finish = r => { if (done) return; done = true; clearTimeout(timer); resolve(r); if (!pw.isDestroyed()) pw.destroy(); };
-    const timer = setTimeout(() => finish({ ok: false, why: 'La impresora no respondió a tiempo.' }), 180000);
-    const layout = { mode: o.scaleMode || 'fit', scale: o.scaleFactor || 100, gray: o.color === false };
-    pw.webContents.ipc.once('print-window-ready', () => pw.webContents.send('print-job', o.pdfBuffer, layout));
-    pw.webContents.ipc.once('print-rendered', () => {
-      const opts = {
-        silent: true, printBackground: true, margins: { marginType: 'none' },
-        copies: Math.max(1, o.copies | 0 || 1), collate: o.collate !== false,
-        landscape: !!o.landscape, color: o.color !== false, duplexMode: o.duplexMode || 'simplex'
-      };
-      if (o.deviceName) opts.deviceName = o.deviceName;
-      if (o.pageSize) opts.pageSize = o.pageSize;
-      if (o.paperTray != null && o.paperTray !== '') opts.paperTray = o.paperTray;
-      if (Array.isArray(o.pageRanges) && o.pageRanges.length) opts.pageRanges = o.pageRanges;
-      try { pw.webContents.print(opts, (ok, why) => finish({ ok, why: why || '' })); }
-      catch (e) { finish({ ok: false, why: e.message }); }
-    });
-    pw.webContents.on('render-process-gone', () => finish({ ok: false, why: 'La ventana de impresión se cerró.' }));
-    pw.on('closed', () => finish({ ok: false, why: 'La ventana de impresión se cerró.' }));
-    pw.loadURL('app://pliego/index.html#print');
-  }));
+  // impresión directa: una sola ventana oculta (modo #print) que se reutiliza; las órdenes van en fila
+  ipcMain.handle('pliego:silent-print', (_e, o = {}) => (printQueue = printQueue.then(() => printJob(o))));
 
   ipcMain.handle('reveal', (_e, p) => { shell.showItemInFolder(p); return true; });
 
   createWindow();
+  setInterval(refreshPrinters, 60000);
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 });
 
