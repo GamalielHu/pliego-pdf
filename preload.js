@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('pliego', {
   desktop: true,
   openDialog: () => ipcRenderer.invoke('open-dialog'),
   saveFile: (opts) => ipcRenderer.invoke('save-file', opts),
+  savePdfFile: (payload) => ipcRenderer.invoke('pliego:save-pdf-file', payload),
   writeFile: (path, data) => ipcRenderer.invoke('write-file', { path, data }),
   reveal: (path) => ipcRenderer.invoke('reveal', path),
   onOpenFiles: (cb) => ipcRenderer.on('open-files', (_e, files) => cb(files)),

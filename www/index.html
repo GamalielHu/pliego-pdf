@@ -477,6 +477,7 @@ input[type=range]{width:96px;accent-color:var(--accent)}
         <label><input type="radio" name="pmScale" value="fit" checked>Ajustar a márgenes imprimibles</label>
         <label><input type="radio" name="pmScale" value="shrink">Reducir páginas grandes</label>
         <label><input type="radio" name="pmScale" value="actual">Tamaño real / sin escala (100 %)</label>
+        <label><input type="checkbox" id="pmCompress" checked>Reducir peso del archivo (Comprimir) · al guardar como PDF</label>
         <label><input type="checkbox" id="pmCustom">Escala personalizada <input type="number" id="pmScaleV" min="25" max="400" value="100" style="width:72px" disabled aria-label="Escala en porcentaje">%</label>
       </fieldset>
       <fieldset><legend>Dúplex</legend><select id="pmDuplex"><option value="simplex">Una cara</option><option value="longEdge">Doble cara · voltear por borde largo</option><option value="shortEdge">Doble cara · voltear por borde corto</option></select></fieldset>
@@ -3032,7 +3033,7 @@ async function openPrint() {
   pmAutoPaper(PM.i); pmRender();
   NATIVE.getPrinters().then(list => {
     const sel = pmv('pmPrinter'), def = list.some(p => p.isDefault);
-    sel.innerHTML = (def ? '' : '<option value="">Predeterminada del sistema</option>') +
+    sel.innerHTML = '<option value="__pdf__">Guardar como PDF</option>' + (def ? '' : '<option value="" selected>Predeterminada del sistema</option>') +
       list.map(p => `<option value="${esc(p.name)}" ${p.isDefault ? 'selected' : ''}>${esc(p.displayName || p.name)}${p.isDefault ? ' (predeterminada)' : ''}</option>`).join('');
   }).catch(() => { });
   try {
@@ -3098,12 +3099,81 @@ function pmPages() {
   if (m === 'custom') return parsePageRanges(pmv('pmPages').value, n).flatMap(r => Array.from({ length: r.to - r.from + 1 }, (_, k) => r.from + k));
   return Array.from({ length: n }, (_, k) => k);
 }
+/* ---- guardar como PDF: cada página escalada y centrada en la hoja elegida, en memoria ---- */
+const resolverRangos = (sourceDoc, rangos) => { const n = sourceDoc.getPageCount(); return rangos && rangos.length ? rangos.filter(i => i >= 0 && i < n) : Array.from({ length: n }, (_, k) => k); };
+async function reimprimirPdfAjustado(sourceDoc, opciones) {
+  // opciones: { pageSize: [w, h], fitMode: 'fit'|'shrink'|'actual'|'custom', scale, compress, pdfjsDoc, pageRanges }
+  const L = await ensureLib(), { PDFDocument, degrees } = L;
+  const targetDoc = await PDFDocument.create({ updateMetadata: false });
+  const idx = resolverRangos(sourceDoc, opciones.pageRanges);
+  const [tw, th] = opciones.pageSize;
+  // páginas con imágenes pesadas: con compresión se rasterizan a 150 ppp, JPEG 0,65
+  const lib = opciones.compress && opciones.pdfjsDoc ? await ensurePdf() : null;
+  const IMG = lib ? new Set([lib.OPS.paintImageXObject, lib.OPS.paintJpegXObject, lib.OPS.paintInlineImageXObject, lib.OPS.paintImageXObjectRepeat].filter(v => v != null)) : null;
+  const embedded = await targetDoc.embedPages(idx.map(i => sourceDoc.getPage(i)));
+  for (let n = 0; n < idx.length; n++) {
+    const src = sourceDoc.getPage(idx[n]), rot = (((src.getRotation().angle || 0) % 360) + 360) % 360;
+    let ep = embedded[n], w = ep.width, h = ep.height;
+    const dw = rot % 180 ? h : w, dh = rot % 180 ? w : h;
+    const fitK = Math.min(tw / dw, th / dh);
+    const k = opciones.fitMode === 'custom' ? opciones.scale : opciones.fitMode === 'actual' ? 1 : opciones.fitMode === 'shrink' ? Math.min(1, fitK) : fitK;
+    const x0 = (tw - dw * k) / 2, y0 = (th - dh * k) / 2;
+    const page = targetDoc.addPage([tw, th]);
+    if (IMG) {
+      const pg = await opciones.pdfjsDoc.getPage(idx[n] + 1);
+      const ops = await pg.getOperatorList();
+      if (ops.fnArray.some(f => IMG.has(f))) {
+        const v1 = pg.getViewport({ scale: 1 });
+        const c = await renderToCanvas(pg, 150 / 72);
+        const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.65)); c.width = c.height = 0;
+        const im = await targetDoc.embedJpg(new Uint8Array(await b.arrayBuffer()));
+        page.drawImage(im, { x: x0, y: y0, width: v1.width * k, height: v1.height * k });
+        continue;
+      }
+    }
+    // la rotación de la página original se aplica al dibujarla, sin deformar
+    const at = { 0: [x0, y0, 0], 90: [x0, y0 + dh * k, -90], 180: [x0 + dw * k, y0 + dh * k, 180], 270: [x0 + dw * k, y0, 90] }[rot] || [x0, y0, 0];
+    page.drawPage(ep, { x: at[0], y: at[1], xScale: k, yScale: k, rotate: degrees(at[2]) });
+  }
+  return targetDoc;
+}
+async function pmSavePdf(ix, job) {
+  try {
+    pmStatus('Creando PDF…', false, 30);
+    const t0 = performance.now(), L = await ensureLib();
+    const land = pmRadio('pmOri') === 'landscape', P = PAPER[pmv('print-page-size').value] || PAPER.Letter;
+    const sourceDoc = await L.PDFDocument.load(PM.bytes, { updateMetadata: false });
+    const cust = pmv('pmCustom').checked, compress = pmv('pmCompress').checked;
+    const opciones = {
+      pageSize: land ? [P.h, P.w] : [P.w, P.h], fitMode: cust ? 'custom' : pmRadio('pmScale'),
+      scale: clamp(parseInt(pmv('pmScaleV').value) || 100, 25, 400) / 100,
+      compress, pdfjsDoc: PM.doc, pageRanges: ix
+    };
+    let finalBytes = await (await reimprimirPdfAjustado(sourceDoc, opciones)).save({ useObjectStreams: true });
+    // si rasterizar no ahorró nada (imágenes ya livianas), se queda la versión vectorial
+    if (compress && finalBytes.length >= PM.bytes.length) {
+      const plain = await (await reimprimirPdfAjustado(sourceDoc, { ...opciones, compress: false })).save({ useObjectStreams: true });
+      if (plain.length < finalBytes.length) finalBytes = plain;
+    }
+    console.log('PDF ajustado en', Math.round(performance.now() - t0), 'ms');
+    if (job !== PM.job) return;
+    pmStatus('Elige dónde guardar…', false, 80);
+    const name = S.name.replace(/[\\/:*?"<>|]+/g, '-') + '.pdf';
+    const p = NATIVE.savePdfFile ? await NATIVE.savePdfFile({ defaultName: name, bytes: finalBytes }) : await saveBlob(new Blob([finalBytes], { type: 'application/pdf' }), name);
+    if (job !== PM.job) return;
+    if (!p) { pmStatus(''); return; }
+    const srcSize = PM.bytes.length; closePrint();
+    toast(`PDF guardado: ${kb(finalBytes.length)} (original ${kb(srcSize)}).`);
+  } catch (e) { console.error(e); if (job === PM.job) pmStatus('No se pudo crear el PDF: ' + (e.message || e), true); }
+  finally { PM.sending = false; pmOk(); }
+}
 async function pmPrint() {
   if (PM.sending || !PM.doc) return;
   const ix = pmPages(), n = PM.doc.numPages;
   if (!ix.length) { pmStatus('Escribe qué páginas quieres, por ejemplo 1-5, 8, 11-13.', true); return; }
   PM.sending = true; pmOk();
   const job = PM.job, printer = pmv('pmPrinter');
+  if (printer.value === '__pdf__') return pmSavePdf(ix, job);
   try {
     const pageRanges = ix.length === n ? null : ix.reduce((a, i) => { const l = a[a.length - 1]; if (l && i === l.to + 1) l.to = i; else a.push({ from: i, to: i }); return a; }, []);
     pmStatus('Enviando a la impresora…', false, 40);
