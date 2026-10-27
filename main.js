@@ -172,12 +172,12 @@ app.whenReady().then(() => {
   });
 
   // guardar como PDF desde el diálogo de impresión, sin pasar por ningún driver de impresora
-  ipcMain.handle('pliego:save-pdf-file', async (_e, { defaultName, bytes }) => {
-    const r = await dialog.showSaveDialog(win, { title: 'Guardar como PDF', defaultPath: path.join(lastDir, defaultName || 'documento.pdf'), filters: [{ name: 'Documento PDF', extensions: ['pdf'] }] });
-    if (r.canceled || !r.filePath) return null;
-    await fs.promises.writeFile(r.filePath, Buffer.from(bytes));
-    lastDir = path.dirname(r.filePath);
-    return r.filePath;
+  ipcMain.handle('pliego:save-pdf-file', async (_e, { buffer, bytes, defaultName }) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Guardar PDF escalado', defaultPath: path.join(lastDir, defaultName || 'documento.pdf'), filters: [{ name: 'Documento PDF (*.pdf)', extensions: ['pdf'] }] });
+    if (canceled || !filePath) return { success: false };
+    await fs.promises.writeFile(filePath, Buffer.from(buffer || bytes));
+    lastDir = path.dirname(filePath);
+    return { success: true, filePath };
   });
 
   ipcMain.handle('write-file', async (_e, { path: p, data }) => {

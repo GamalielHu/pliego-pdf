@@ -3033,7 +3033,7 @@ async function openPrint() {
   pmAutoPaper(PM.i); pmRender();
   NATIVE.getPrinters().then(list => {
     const sel = pmv('pmPrinter'), def = list.some(p => p.isDefault);
-    sel.innerHTML = '<option value="__pdf__">Guardar como PDF</option>' + (def ? '' : '<option value="" selected>Predeterminada del sistema</option>') +
+    sel.innerHTML = '<option value="__APP_VIRTUAL_PDF__">Guardar como PDF</option>' + (def ? '' : '<option value="" selected>Predeterminada del sistema</option>') +
       list.map(p => `<option value="${esc(p.name)}" ${p.isDefault ? 'selected' : ''}>${esc(p.displayName || p.name)}${p.isDefault ? ' (predeterminada)' : ''}</option>`).join('');
   }).catch(() => { });
   try {
@@ -3124,7 +3124,7 @@ async function reimprimirPdfAjustado(sourceDoc, opciones) {
       const ops = await pg.getOperatorList();
       if (ops.fnArray.some(f => IMG.has(f))) {
         const v1 = pg.getViewport({ scale: 1 });
-        const c = await renderToCanvas(pg, 150 / 72);
+        const c = await renderToCanvas(pg, 150 / 72 * Math.min(1, k)); // 150 ppp sobre la hoja destino, no sobre la página original
         const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.65)); c.width = c.height = 0;
         const im = await targetDoc.embedJpg(new Uint8Array(await b.arrayBuffer()));
         page.drawImage(im, { x: x0, y: y0, width: v1.width * k, height: v1.height * k });
@@ -3157,11 +3157,12 @@ async function pmSavePdf(ix, job) {
     }
     console.log('PDF ajustado en', Math.round(performance.now() - t0), 'ms');
     if (job !== PM.job) return;
-    pmStatus('Elige dónde guardar…', false, 80);
     const name = S.name.replace(/[\\/:*?"<>|]+/g, '-') + '.pdf';
-    const p = NATIVE.savePdfFile ? await NATIVE.savePdfFile({ defaultName: name, bytes: finalBytes }) : await saveBlob(new Blob([finalBytes], { type: 'application/pdf' }), name);
+    pmStatus('Guardando documento…', false, 80);
+    const r = NATIVE.savePdfFile ? await NATIVE.savePdfFile({ buffer: finalBytes, defaultName: name }) : await saveBlob(new Blob([finalBytes], { type: 'application/pdf' }), name);
+    const p = r === true || (r && r.success);
     if (job !== PM.job) return;
-    if (!p) { pmStatus(''); return; }
+    if (!p) { closePrint(); return; }
     const srcSize = PM.bytes.length; closePrint();
     toast(`PDF guardado: ${kb(finalBytes.length)} (original ${kb(srcSize)}).`);
   } catch (e) { console.error(e); if (job === PM.job) pmStatus('No se pudo crear el PDF: ' + (e.message || e), true); }
@@ -3173,7 +3174,9 @@ async function pmPrint() {
   if (!ix.length) { pmStatus('Escribe qué páginas quieres, por ejemplo 1-5, 8, 11-13.', true); return; }
   PM.sending = true; pmOk();
   const job = PM.job, printer = pmv('pmPrinter');
-  if (printer.value === '__pdf__') return pmSavePdf(ix, job);
+  // cualquier destino PDF (incluida «Microsoft Print to PDF») se resuelve en memoria: nunca pasa por el driver de Windows
+  const esSalidaPdf = printer.value === '__APP_VIRTUAL_PDF__' || printer.value.toLowerCase().includes('pdf');
+  if (esSalidaPdf) return pmSavePdf(ix, job);
   try {
     const pageRanges = ix.length === n ? null : ix.reduce((a, i) => { const l = a[a.length - 1]; if (l && i === l.to + 1) l.to = i; else a.push({ from: i, to: i }); return a; }, []);
     pmStatus('Enviando a la impresora…', false, 40);
