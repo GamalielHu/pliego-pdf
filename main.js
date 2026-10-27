@@ -142,6 +142,8 @@ app.whenReady().then(() => {
         landscape: !!o.landscape, color: o.color !== false, duplexMode: o.duplexMode || 'simplex'
       };
       if (o.deviceName) opts.deviceName = o.deviceName;
+      if (o.pageSize) opts.pageSize = o.pageSize;
+      if (o.paperTray != null && o.paperTray !== '') opts.paperTray = o.paperTray;
       if (Array.isArray(o.pageRanges) && o.pageRanges.length) opts.pageRanges = o.pageRanges;
       try { pw.webContents.print(opts, (ok, why) => finish({ ok, why: why || '' })); }
       catch (e) { finish({ ok: false, why: e.message }); }

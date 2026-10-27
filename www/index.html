@@ -464,10 +464,20 @@ input[type=range]{width:96px;accent-color:var(--accent)}
       </fieldset>
       <fieldset><legend>Orientación</legend><div class="row"><label><input type="radio" name="pmOri" value="portrait" checked>Vertical</label><label><input type="radio" name="pmOri" value="landscape">Horizontal</label></div></fieldset>
       <fieldset><legend>Color</legend><div class="row"><label><input type="radio" name="pmColor" value="color" checked>Color</label><label><input type="radio" name="pmColor" value="gray">Escala de grises</label></div></fieldset>
-      <fieldset><legend>Escala</legend>
-        <label><input type="radio" name="pmScale" value="fit" checked>Ajustar a márgenes</label>
-        <label><input type="radio" name="pmScale" value="actual">Tamaño real</label>
-        <label><input type="radio" name="pmScale" value="custom">Personalizada <input type="number" id="pmScaleV" min="10" max="400" value="100" style="width:72px" disabled aria-label="Escala en porcentaje">%</label>
+      <fieldset><legend>Tamaño y manejo de papel</legend>
+        <select id="print-page-size" aria-label="Tamaño de papel">
+          <option value="Letter">Carta / Letter (8.5 × 11.0 pulg · 216 × 279 mm)</option>
+          <option value="Legal">Oficio / Legal (8.5 × 14.0 pulg · 216 × 356 mm)</option>
+          <option value="Folio">Oficio boliviano / Folio (8.5 × 13.0 pulg · 216 × 330 mm)</option>
+          <option value="A4">A4 (210 × 297 mm)</option>
+          <option value="A3">A3 (297 × 420 mm)</option>
+          <option value="Tabloid">Tabloide / Doble carta (11.0 × 17.0 pulg)</option>
+        </select>
+        <label><input type="checkbox" id="pmAuto" checked>Elegir origen de papel por tamaño de página PDF</label>
+        <label><input type="radio" name="pmScale" value="fit" checked>Ajustar a márgenes imprimibles</label>
+        <label><input type="radio" name="pmScale" value="shrink">Reducir páginas grandes</label>
+        <label><input type="radio" name="pmScale" value="actual">Tamaño real / sin escala (100 %)</label>
+        <label><input type="checkbox" id="pmCustom">Escala personalizada <input type="number" id="pmScaleV" min="25" max="400" value="100" style="width:72px" disabled aria-label="Escala en porcentaje">%</label>
       </fieldset>
       <fieldset><legend>Dúplex</legend><select id="pmDuplex"><option value="simplex">Una cara</option><option value="longEdge">Doble cara · voltear por borde largo</option><option value="shortEdge">Doble cara · voltear por borde corto</option></select></fieldset>
     </div>
@@ -2977,9 +2987,9 @@ async function fillPrintArea(bytes, layout = {}) {
       const d = div('pp'); const im = new Image(); im.src = u; d.appendChild(im); el.printArea.appendChild(d);
       if (layout.gray) im.style.filter = 'grayscale(100%)';
       if (layout.mode === 'actual' || layout.mode === 'custom') {
-        const k = layout.mode === 'custom' ? clamp(+layout.scale || 100, 10, 400) / 100 : 1;
+        const k = layout.mode === 'custom' ? clamp(+layout.scale || 100, 25, 400) / 100 : 1;
         Object.assign(im.style, { width: v1.width * k + 'pt', height: v1.height * k + 'pt', maxWidth: 'none', maxHeight: 'none' });
-      }
+      } else if (layout.mode === 'shrink') Object.assign(im.style, { width: `min(100%, ${v1.width}pt)`, height: `min(100vh, ${v1.height}pt)`, objectFit: 'contain' });
       await im.decode().catch(() => { });
     }
     return urls;
@@ -2989,6 +2999,17 @@ async function fillPrintArea(bytes, layout = {}) {
 const PAPERS = [['Carta', 612, 792], ['A4', 595.28, 841.89], ['Oficio', 612, 935.43], ['Legal', 612, 1008], ['A3', 841.89, 1190.55], ['A5', 419.53, 595.28]];
 const paperName = (w, h) => { const a = Math.min(w, h), b = Math.max(w, h); const m = PAPERS.find(([, x, y]) => Math.abs(a - x) < 4 && Math.abs(b - y) < 4); return m ? m[0] : 'Personalizado'; };
 const ptMm = v => Math.round(v * 25.4 / 72);
+// hojas del diálogo: medidas en puntos (vertical) y tamaño para Electron (nombre estándar o micras)
+const PAPER = {
+  Letter: { name: 'Carta', w: 612, h: 792, size: 'Letter' },
+  Legal: { name: 'Oficio / Legal', w: 612, h: 1008, size: 'Legal' },
+  Folio: { name: 'Oficio boliviano', w: 612, h: 936, size: { width: 215900, height: 330200 } },
+  A4: { name: 'A4', w: 595.28, h: 841.89, size: 'A4' },
+  A3: { name: 'A3', w: 841.89, h: 1190.55, size: 'A3' },
+  Tabloid: { name: 'Tabloide', w: 792, h: 1224, size: 'Tabloid' }
+};
+const paperKey = (w, h) => { const a = Math.min(w, h), b = Math.max(w, h); return Object.keys(PAPER).find(k => Math.abs(a - PAPER[k].w) < 4 && Math.abs(b - PAPER[k].h) < 4) || null; };
+const pmAutoPaper = i => { if (!pmv('pmAuto').checked || !PM.sizes) return; const z = PM.sizes[i]; const k = z && paperKey(z[0], z[1]); if (k) pmv('print-page-size').value = k; };
 function parsePageRanges(s, n) {
   const out = [];
   for (const i of parseRange(s, n)) { const l = out[out.length - 1]; if (l && i === l.to + 1) l.to = i; else out.push({ from: i, to: i }); }
@@ -3005,7 +3026,7 @@ function pmStatus(t, err, pct) {
 }
 async function openPrint() {
   const job = ++PM.job;
-  PM.i = S.current; PM.zoom = 1; PM.bytes = null; PM.doc = null; PM.sending = false;
+  PM.i = S.current; PM.zoom = 1; PM.bytes = null; PM.doc = null; PM.sizes = null; PM.sending = false;
   pmEl.hidden = false; pmOk(); pmStatus('');
   pmv('pmCanvas').hidden = true; pmv('pmWait').hidden = false; pmv('pmWait').textContent = 'Preparando vista previa…'; pmv('pmMeta').textContent = '';
   NATIVE.getPrinters().then(list => {
@@ -3020,6 +3041,12 @@ async function openPrint() {
     const doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
     if (job !== PM.job) { doc.destroy(); return; }
     PM.bytes = bytes; PM.doc = doc;
+    try {
+      const L = await ensureLib(), ld = await L.PDFDocument.load(bytes, { updateMetadata: false });
+      PM.sizes = ld.getPages().map(p => { const b = p.getMediaBox(), r = (p.getRotation().angle || 0) % 180; return r ? [b.height, b.width] : [b.width, b.height]; });
+    } catch (e) { PM.sizes = null; }
+    if (job !== PM.job) return;
+    pmAutoPaper(PM.i);
     pmv('pmWait').hidden = true; pmv('pmCanvas').hidden = false; pmOk(); pmRender();
   } catch (e) { if (job === PM.job) { console.error(e); pmv('pmWait').textContent = 'No se pudo preparar el documento: ' + (e.message || e); } }
 }
@@ -3033,25 +3060,33 @@ async function pmRender() {
   const n = doc.numPages; PM.i = clamp(PM.i, 0, n - 1);
   const pg = await doc.getPage(PM.i + 1); if (doc !== PM.doc) return;
   const v1 = pg.getViewport({ scale: 1 }), st = $('.pstage', pmEl);
-  const fit = Math.max(0.05, Math.min((st.clientWidth - 32) / v1.width, (st.clientHeight - 32) / v1.height));
-  const dpr = Math.min(window.devicePixelRatio || 1, 2), vp = pg.getViewport({ scale: fit * PM.zoom * dpr });
+  // hoja destino según tamaño y orientación; la página se coloca encima con la escala elegida
+  const land = pmRadio('pmOri') === 'landscape', pk = pmv('print-page-size').value, P = PAPER[pk] || PAPER.Letter;
+  const SW = land ? P.h : P.w, SH = land ? P.w : P.h;
+  const sm = pmRadio('pmScale'), cust = pmv('pmCustom').checked, fitK = Math.min(SW / v1.width, SH / v1.height);
+  const k = cust ? clamp(parseInt(pmv('pmScaleV').value) || 100, 25, 400) / 100 : sm === 'actual' ? 1 : sm === 'shrink' ? Math.min(1, fitK) : fitK;
+  const disp = Math.max(0.05, Math.min((st.clientWidth - 32) / SW, (st.clientHeight - 32) / SH)) * PM.zoom;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), vp = pg.getViewport({ scale: disp * k * dpr });
   if (PM.task) { try { PM.task.cancel(); } catch (e) { } }
-  const c = document.createElement('canvas'); c.id = 'pmCanvas';
-  c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
-  c.style.width = vp.width / dpr + 'px'; c.style.height = vp.height / dpr + 'px';
-  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-  const task = PM.task = pg.render({ canvasContext: ctx, viewport: vp });
+  const off = document.createElement('canvas');
+  off.width = Math.ceil(vp.width); off.height = Math.ceil(vp.height);
+  const ox = off.getContext('2d'); ox.fillStyle = '#fff'; ox.fillRect(0, 0, off.width, off.height);
+  const task = PM.task = pg.render({ canvasContext: ox, viewport: vp });
   try { await task.promise; } catch (e) { return; }
   if (task !== PM.task || doc !== PM.doc) return;
   PM.task = null;
+  const c = document.createElement('canvas'); c.id = 'pmCanvas';
+  c.width = Math.ceil(SW * disp * dpr); c.height = Math.ceil(SH * disp * dpr);
+  c.style.width = SW * disp + 'px'; c.style.height = SH * disp + 'px';
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(off, (c.width - off.width) / 2, (c.height - off.height) / 2); off.width = off.height = 0;
   c.style.filter = pmRadio('pmColor') === 'gray' ? 'grayscale(100%)' : '';
   pmv('pmCanvas').replaceWith(c);
   pmv('pmPos').textContent = `Página ${PM.i + 1} de ${n}`;
   pmv('pmZoom').textContent = Math.round(PM.zoom * 100) + '%';
   pmv('pmPrev').disabled = PM.i === 0; pmv('pmNext').disabled = PM.i >= n - 1;
-  const land = pmRadio('pmOri') === 'landscape', w = land ? Math.max(v1.width, v1.height) : Math.min(v1.width, v1.height), h = land ? Math.min(v1.width, v1.height) : Math.max(v1.width, v1.height);
-  const cnt = pmPages().length;
-  pmv('pmMeta').textContent = `${paperName(v1.width, v1.height)} · ${ptMm(w)} × ${ptMm(h)} mm · ${land ? 'Horizontal' : 'Vertical'} · ${cnt} página${cnt === 1 ? '' : 's'} a imprimir`;
+  const cnt = pmPages().length, z = (PM.sizes && PM.sizes[PM.i]) || [v1.width, v1.height];
+  pmv('pmMeta').textContent = `Documento: ${paperName(z[0], z[1])} ${ptMm(z[0])} × ${ptMm(z[1])} mm · Papel: ${P.name} ${ptMm(SW)} × ${ptMm(SH)} mm (${land ? 'horizontal' : 'vertical'}) · Escala ${Math.round(k * 100)} % · Vista previa ${Math.round(disp * 100)} % · ${cnt} página${cnt === 1 ? '' : 's'} a imprimir`;
 }
 function pmPages() {
   const n = PM.doc ? PM.doc.numPages : 0, m = pmRadio('pmRange');
@@ -3075,11 +3110,13 @@ async function pmPrint() {
       bytes = await out.save();
     }
     pmStatus('Enviando a la impresora…', false, 55);
-    const sm = pmRadio('pmScale');
+    const sm = pmv('pmCustom').checked ? 'custom' : pmRadio('pmScale');
+    pmAutoPaper(ix[0]);
+    const pk = PAPER[pmv('print-page-size').value] || PAPER.Letter;
     const r = await NATIVE.silentPrint({
       pdfBuffer: bytes, deviceName: printer.value, copies: clamp(parseInt(pmv('pmCopies').value) || 1, 1, 999), collate: pmv('pmCollate').checked,
       duplexMode: pmv('pmDuplex').value, landscape: pmRadio('pmOri') === 'landscape', color: pmRadio('pmColor') !== 'gray',
-      scaleMode: sm, scaleFactor: sm === 'custom' ? clamp(parseInt(pmv('pmScaleV').value) || 100, 10, 400) : 100
+      scaleMode: sm, scaleFactor: sm === 'custom' ? clamp(parseInt(pmv('pmScaleV').value) || 100, 25, 400) : 100, pageSize: pk.size
     });
     if (job !== PM.job) return;
     if (r && r.ok) {
@@ -3093,13 +3130,16 @@ async function pmPrint() {
 pmEl.addEventListener('change', e => {
   const t = e.target;
   if (t.name === 'pmRange') { pmv('pmPages').disabled = t.value !== 'custom'; if (t.value === 'custom') pmv('pmPages').focus(); }
-  if (t.name === 'pmScale') pmv('pmScaleV').disabled = t.value !== 'custom';
+  if (t.id === 'pmCustom') pmv('pmScaleV').disabled = !t.checked;
+  if (t.id === 'print-page-size') pmv('pmAuto').checked = false;
+  if (t.id === 'pmAuto') pmAutoPaper(PM.i);
   pmStatus(''); pmJump(); pmRender();
 });
 const pmJump = () => { const ix = pmPages(); if (ix.length && !ix.includes(PM.i)) PM.i = ix[0]; };
 pmv('pmPages').addEventListener('input', () => { clearTimeout(PM.t); PM.t = setTimeout(() => { pmJump(); pmRender(); }, 250); });
-pmv('pmPrev').onclick = () => { PM.i--; pmRender(); };
-pmv('pmNext').onclick = () => { PM.i++; pmRender(); };
+pmv('pmPrev').onclick = () => { PM.i--; pmAutoPaper(PM.i); pmRender(); };
+pmv('pmNext').onclick = () => { PM.i++; pmAutoPaper(PM.i); pmRender(); };
+pmv('pmScaleV').addEventListener('input', () => { clearTimeout(PM.t); PM.t = setTimeout(pmRender, 250); });
 pmv('pmZIn').onclick = () => { PM.zoom = Math.min(4, PM.zoom * 1.25); pmRender(); };
 pmv('pmZOut').onclick = () => { PM.zoom = Math.max(0.25, PM.zoom / 1.25); pmRender(); };
 pmv('pmCancel').onclick = closePrint;
