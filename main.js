@@ -172,6 +172,20 @@ app.whenReady().then(() => {
   });
 
   // guardar como PDF desde el diálogo de impresión, sin pasar por ningún driver de impresora
+  // leer un archivo por ruta (recientes)
+  ipcMain.handle('pliego:read-file', async (_e, p) => {
+    try { return { name: path.basename(p), path: p, data: await fs.promises.readFile(p) }; } catch (e) { return null; }
+  });
+
+  // guardar el PDF ya sin contraseña/restricciones
+  ipcMain.handle('pliego:unlock-pdf-file', async (_e, { buffer, bytes, defaultName }) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Guardar PDF desbloqueado', defaultPath: path.join(lastDir, defaultName || 'documento_desbloqueado.pdf'), filters: [{ name: 'Documento PDF (*.pdf)', extensions: ['pdf'] }] });
+    if (canceled || !filePath) return { success: false };
+    await fs.promises.writeFile(filePath, Buffer.from(buffer || bytes));
+    lastDir = path.dirname(filePath);
+    return { success: true, filePath };
+  });
+
   ipcMain.handle('pliego:save-pdf-file', async (_e, { buffer, bytes, defaultName }) => {
     const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Guardar PDF escalado', defaultPath: path.join(lastDir, defaultName || 'documento.pdf'), filters: [{ name: 'Documento PDF (*.pdf)', extensions: ['pdf'] }] });
     if (canceled || !filePath) return { success: false };

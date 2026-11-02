@@ -294,10 +294,36 @@ input[type=range]{width:96px;accent-color:var(--accent)}
   .pp:last-child{break-after:auto;page-break-after:auto}
   .pp img{max-width:100%;max-height:100vh;display:block}
 }
+/* menú Archivo (backstage) estilo Foxit */
+#fileBtn{height:30px;padding:0 14px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font:600 13px var(--f-ui);display:flex;align-items:center;gap:6px;flex:none}
+#fileBtn:hover{filter:brightness(1.05)}
+#backstage{position:fixed;inset:0;z-index:70;background:rgba(20,18,16,.45);display:flex}
+#backstage[hidden]{display:none}
+#backstage .bs{background:var(--surface);color:var(--ink);width:min(560px,100%);height:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;animation:bsin .14s ease}
+@keyframes bsin{from{transform:translateX(-14px);opacity:.4}to{transform:none;opacity:1}}
+#backstage header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+#backstage header h2{margin:0;font:600 17px var(--f-display)}
+#backstage .bsbody{flex:1;overflow:auto;padding:8px}
+.bsitem{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border-radius:9px;font:500 14px var(--f-ui);color:var(--ink);text-align:left}
+.bsitem:hover{background:var(--accent-soft)}
+.bsitem .ic{width:20px;height:20px;flex:none;color:var(--muted)}
+.bsitem small{color:var(--muted);font-weight:400;margin-left:auto}
+.bssep{height:1px;background:var(--line);margin:6px 10px}
+.bshead{font:600 11px var(--f-ui);text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:12px 14px 4px}
+.bsrecent{display:flex;flex-direction:column;gap:1px}
+.bsrecent button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 14px;border-radius:8px;text-align:left}
+.bsrecent button:hover{background:var(--accent-soft)}
+.bsrecent b{font:500 13px var(--f-ui);color:var(--ink)}
+.bsrecent span{font:400 11px var(--f-mono);color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M14 3v4h4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a1 1 0 011-1h5l2 2h9a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="1.5"/><path d="M8 10.5V7a4 4 0 018 0"/><path d="M12 14v3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-new" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M12 10v6M9 13h6"/></symbol>
   <symbol id="i-select" viewBox="0 0 24 24"><path d="M6 3.5l12.5 7.3-5.6 1.4-2.4 5.6z"/><path d="M13 12.4l4.6 6.1"/></symbol>
   <symbol id="i-textedit" viewBox="0 0 24 24"><path d="M3 18.5L7.8 6l4.8 12.5M4.8 14h6"/><path d="M18 5v14M15.8 5h4.4M15.8 19h4.4"/></symbol>
   <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 7V4.5h14V7M12 4.5v15M9 19.5h6"/></symbol>
@@ -352,6 +378,7 @@ input[type=range]{width:96px;accent-color:var(--accent)}
 <div id="app">
   <header id="top">
     <button id="bSide" class="ib" title="Miniaturas de páginas" aria-label="Mostrar u ocultar miniaturas"><svg class="ic"><use href="#i-side"/></svg></button>
+    <button id="fileBtn" title="Menú Archivo"><svg class="ic"><use href="#i-file"/></svg><span class="hide-s">Archivo</span></button>
     <div class="brand">
       <svg class="mark" viewBox="0 0 26 30" aria-hidden="true"><path d="M3 2h13l7 7v18a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.6"/><path d="M16 2v7h7" fill="none" stroke="var(--ink)" stroke-width="1.6"/><path d="M6.5 14h12M6.5 18h12M6.5 22h7" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/></svg>
       <span>Pliego</span>
@@ -495,6 +522,11 @@ input[type=range]{width:96px;accent-color:var(--accent)}
   </div>
 </div>
 
+<div id="backstage" hidden role="dialog" aria-modal="true" aria-label="Menú Archivo"><div class="bs">
+  <header><button class="ib" id="bsClose" aria-label="Cerrar">${''}<svg class="ic"><use href="#i-close"/></svg></button><h2>Archivo</h2></header>
+  <div class="bsbody" id="bsBody"></div>
+</div></div>
+<input type="file" id="fileUnlock" accept="application/pdf,.pdf" multiple hidden>
 <div id="toast" hidden></div>
 <div id="measure"></div>
 <div id="printArea"></div>
@@ -601,7 +633,7 @@ const el = {
   pgIn: $('#pgIn'), pgCount: $('#pgCount'), undo: $('#bUndo'), redo: $('#bRedo'),
   org: $('#org'), orgGrid: $('#orgGrid'), orgCount: $('#orgCount'), toast: $('#toast'),
   measure: $('#measure'), printArea: $('#printArea'),
-  fileOpen: $('#fileOpen'), fileMerge: $('#fileMerge'), fileInsert: $('#fileInsert'), fileImage: $('#fileImage')
+  fileOpen: $('#fileOpen'), fileUnlock: $('#fileUnlock'), fileMerge: $('#fileMerge'), fileInsert: $('#fileInsert'), fileImage: $('#fileImage')
 };
 
 /* ---------------- utilidades ---------------- */
@@ -819,7 +851,7 @@ async function openNative(list, mode) {
   if (!list || !list.length) return;
   const files = list.map(f => new File([f.data], f.name, { type: /\.pdf$/i.test(f.name) ? 'application/pdf' : '' }));
   const m = await openFiles(files, mode);
-  if (m === 'replace' && list.length === 1 && /\.pdf$/i.test(list[0].name)) { S.filePath = list[0].path; updateTitle(); }
+  if (m === 'replace' && list.length === 1 && /\.pdf$/i.test(list[0].name)) { S.filePath = list[0].path; updateTitle(); rememberRecent(S.filePath, S.name); }
 }
 function updateTitle() { document.title = S.pages.length ? `${S.name}${S.dirty ? ' •' : ''} — Pliego` : 'Pliego · Editor PDF'; }
 async function quickSave() {
@@ -3304,6 +3336,130 @@ $('#bZoomIn').onclick = () => zoomStep(1);
 $('#bZoomOut').onclick = () => zoomStep(-1);
 el.zoomVal.onclick = () => { S.fit = true; setZoom(fitZoom()); };
 el.undo.onclick = undo; el.redo.onclick = redo;
+/* ===== menú Archivo (backstage) + recientes + quitar restricciones ===== */
+const RECENT_KEY = 'pliego.recientes';
+function recientes() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; } }
+function rememberRecent(path, name) {
+  if (!path) return;
+  try { const l = recientes().filter(r => r.path !== path); l.unshift({ path, name: name || fileBase(path) }); localStorage.setItem(RECENT_KEY, JSON.stringify(l.slice(0, 8))); } catch (e) { }
+}
+function nuevoDoc() {
+  if (S.dirty && S.pages.length && !confirm('Se descartará el documento actual sin guardar. ¿Continuar?')) return;
+  S.sources = []; S.pages = []; S.sel = null; S.editing = null; S.current = 0;
+  S.hist = []; S.fut = []; S.dirty = false; S.name = 'documento'; S.filePath = null;
+  updateUndo(); showDoc(); updateTitle();
+}
+async function docProps() {
+  const n = S.pages.length;
+  const dims = n ? (() => { const p = S.pages[0]; return `${Math.round(p.w * 25.4 / 72)} × ${Math.round(p.h * 25.4 / 72)} mm`; })() : '—';
+  await ask({ title: 'Propiedades', body: `<p class="note">Nombre: <b>${esc(S.name)}</b><br>Páginas: <b>${n}</b><br>Primera página: <b>${dims}</b><br>Archivo: <b>${esc(S.filePath ? fileBase(S.filePath) : 'sin guardar')}</b></p>`, buttons: [{ label: 'Cerrar', value: null }] });
+}
+async function pickPdfFiles() {
+  if (NATIVE) { const list = await NATIVE.openDialog(); return (list || []).filter(f => /\.pdf$/i.test(f.name)).map(f => ({ name: f.name, bytes: new Uint8Array(f.data) })); }
+  return await new Promise(res => { el.fileUnlock.value = ''; el.fileUnlock.onchange = async () => { const out = []; for (const f of el.fileUnlock.files) out.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) }); res(out); }; el.fileUnlock.click(); });
+}
+// quita la contraseña/restricciones de un PDF. force=true aplana a imágenes (quita firmas y bloqueos de edición)
+async function unlockPdfBytes(bytes, name, force) {
+  const L = await ensureLib(), lib = await ensurePdf();
+  let doc = null, needPass = false;
+  try { doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise; }
+  catch (e) { if (/password/i.test((e && (e.name + ' ' + e.message)) || '')) needPass = true; else throw e; }
+  if (needPass) {
+    for (let i = 0; i < 3 && !doc; i++) {
+      const r = await ask({ title: i ? 'Contraseña incorrecta' : `«${esc(name)}» está protegido`, body: '<p class="note">Escribe la contraseña de apertura para quitarla.</p>', input: { type: 'password', placeholder: 'Contraseña' }, buttons: [{ label: 'Cancelar', value: null }, { label: 'Abrir', value: 'ok', primary: true }] });
+      if (!r || r.input == null) return null;
+      try { doc = await lib.getDocument({ data: bytes.slice(), password: r.input, isEvalSupported: false }).promise; }
+      catch (e) { if (!/password/i.test((e && (e.name + ' ' + e.message)) || '')) throw e; }
+    }
+    if (!doc) return null;
+  } else if (!force) {
+    // abre sin clave: quita solo las restricciones de propietario conservando texto y vectores
+    try { const d = await L.PDFDocument.load(bytes, { ignoreEncryption: true }); return await d.save({ useObjectStreams: true }); }
+    catch (e) { /* si no se pudo, cae a la reconstrucción por rasterización */ }
+  }
+  // reconstrucción: cada página se rasteriza y se rearma en un PDF nuevo y limpio
+  const out = await L.PDFDocument.create();
+  for (let i = 1; i <= doc.numPages; i++) {
+    busy(true, 'Quitando la protección…', `${name} · página ${i} de ${doc.numPages}`, (i / doc.numPages) * 100);
+    const pg = await doc.getPage(i), v1 = pg.getViewport({ scale: 1 });
+    let sc = 200 / 72; if (v1.width * v1.height * sc * sc > 3.3e7) sc = Math.sqrt(3.3e7 / (v1.width * v1.height));
+    const c = await renderToCanvas(pg, sc);
+    const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85)); c.width = c.height = 0;
+    const im = await out.embedJpg(new Uint8Array(await b.arrayBuffer()));
+    out.addPage([v1.width, v1.height]).drawImage(im, { x: 0, y: 0, width: v1.width, height: v1.height });
+  }
+  doc.destroy();
+  return await out.save({ useObjectStreams: true });
+}
+async function unlockFlow() {
+  closeFileMenu();
+  const files = await pickPdfFiles();
+  if (!files.length) return;
+  const r = await ask({ title: 'Quitar contraseña o restricciones', body: `<p class="note">${files.length} archivo${files.length > 1 ? 's' : ''}. «Quitar restricciones» conserva el texto; «Forzar» aplana a imágenes (quita firmas y bloqueos de edición, el texto deja de ser seleccionable).</p>`, buttons: [{ label: 'Cancelar', value: null }, { label: 'Forzar (aplanar)', value: 'force' }, { label: 'Quitar restricciones', value: 'clean', primary: true }] });
+  if (!r) return;
+  const force = r.value === 'force';
+  try {
+    let ok = 0;
+    for (const f of files) {
+      busy(true, 'Quitando la protección…', f.name, 0);
+      const out = await unlockPdfBytes(f.bytes, f.name, force);
+      if (!out) continue;
+      const defaultName = baseName(f.name) + '_desbloqueado.pdf';
+      busy(false);
+      const res = NATIVE && NATIVE.unlockPdfFile ? await NATIVE.unlockPdfFile({ buffer: out, defaultName }) : await saveBlob(new Blob([out], { type: 'application/pdf' }), defaultName);
+      if (res === true || (res && res.success) || (res && typeof res === 'string')) ok++;
+    }
+    busy(false);
+    if (ok) toast(`${ok} archivo${ok > 1 ? 's' : ''} sin restricciones.`);
+  } catch (e) { fail(e); }
+}
+function closeFileMenu() { $('#backstage').hidden = true; }
+async function openFileMenu() {
+  const bs = $('#backstage'), body = $('#bsBody'), has = S.pages.length > 0;
+  const rec = NATIVE ? recientes() : [];
+  const item = (ic, label, act, note) => `<button class="bsitem" data-fm="${act}"><svg class="ic"><use href="#i-${ic}"/></svg>${label}${note ? `<small>${note}</small>` : ''}</button>`;
+  body.innerHTML =
+    item('new', 'Nuevo', 'new') +
+    item('folder', 'Abrir…', 'open', 'Ctrl+O') +
+    (rec.length ? `<div class="bshead">Recientes</div><div class="bsrecent">${rec.map((r, i) => `<button data-rec="${i}"><b>${esc(r.name)}</b><span>${esc(r.path)}</span></button>`).join('')}</div>` : '') +
+    '<div class="bssep"></div>' +
+    item('save', 'Guardar', 'save', 'Ctrl+S') +
+    item('down', 'Guardar como / Exportar', 'export', 'Ctrl+Shift+S') +
+    item('image', 'Importar imágenes o Word', 'import') +
+    item('merge', 'Unir PDFs', 'merge') +
+    item('compress', 'Comprimir PDF', 'compress') +
+    '<div class="bssep"></div>' +
+    item('lock', 'Quitar contraseña / restricciones', 'unlock') +
+    item('print', 'Imprimir', 'print', 'Ctrl+P') +
+    item('info', 'Propiedades', 'props') +
+    '<div class="bssep"></div>' +
+    item('close', 'Cerrar documento', 'closedoc');
+  bs.hidden = false;
+  if (!openFileMenu._wired) {
+    openFileMenu._wired = true;
+    $('#bsClose').onclick = closeFileMenu;
+    bs.addEventListener('click', async e => {
+      if (e.target === bs) { closeFileMenu(); return; }
+      const rb = e.target.closest('[data-rec]');
+      if (rb && NATIVE) { closeFileMenu(); const r = recientes()[+rb.dataset.rec]; if (!r) return; const f = await NATIVE.readFile(r.path); if (f) openNative([f], 'replace'); else toast('No se encontró el archivo.', true); return; }
+      const b = e.target.closest('[data-fm]'); if (!b) return;
+      const act = b.dataset.fm;
+      if (act === 'unlock') return unlockFlow();
+      closeFileMenu();
+      if (act === 'new') nuevoDoc();
+      else if (act === 'open') pickOpen();
+      else if (act === 'save') quickSave();
+      else if (act === 'export') openExport('pdf');
+      else if (act === 'import') pickOpen();
+      else if (act === 'merge') { el.fileMerge.value = ''; el.fileMerge.click(); }
+      else if (act === 'compress') openCompress();
+      else if (act === 'print') printDoc();
+      else if (act === 'props') docProps();
+      else if (act === 'closedoc') nuevoDoc();
+    });
+  }
+}
+$('#fileBtn').onclick = openFileMenu;
 $('#bOrg').onclick = openOrg;
 $('#bPrint').onclick = printDoc;
 $('#bMerge').onclick = () => { el.fileMerge.value = ''; el.fileMerge.click(); };
