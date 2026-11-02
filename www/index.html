@@ -3414,58 +3414,89 @@ async function unlockFlow() {
   } catch (e) { fail(e); }
 }
 // recuperar una contraseña olvidada de un PDF propio (solo escritorio: usa el binario local pdfcrack)
+// genera contraseñas por fuerza bruta (odómetro sobre el conjunto de caracteres)
+function* bruteGen(charset, min, max) {
+  const cs = [...new Set((charset || '').split(''))];
+  if (!cs.length) return;
+  for (let len = Math.max(1, min); len <= max; len++) {
+    const idx = new Array(len).fill(0);
+    for (;;) {
+      yield idx.map(i => cs[i]).join('');
+      let p = len - 1;
+      for (; p >= 0; p--) { if (++idx[p] < cs.length) break; idx[p] = 0; }
+      if (p < 0) break;
+    }
+  }
+}
+// prueba contraseñas de apertura con el motor PDF ya incluido (pdf.js); todo local, sin programas externos
+async function recoverOpenPassword(bytes, gen, onTry) {
+  const lib = await ensurePdf();
+  let n = 0;
+  for (const pwd of gen) {
+    if (busyCancel) return { cancelled: true, tried: n };
+    n++;
+    if (n === 1 || n % 20 === 0) { onTry(pwd, n); await new Promise(r => setTimeout(r, 0)); }
+    try { const doc = await lib.getDocument({ data: bytes.slice(), password: pwd, isEvalSupported: false }).promise; doc.destroy(); return { password: pwd, tried: n }; }
+    catch (e) { /* contraseña incorrecta: continuar */ }
+  }
+  return { tried: n, notFound: true };
+}
 async function recoverFlow() {
   closeFileMenu();
-  if (!NATIVE || !NATIVE.crackPdf) { toast('La recuperación de contraseña solo está disponible en la app de escritorio.', true); return; }
   const files = await pickPdfFiles();
   if (!files.length) return;
   const f = files[0];
+  const lib = await ensurePdf();
+  let protegido = false;
+  try { const d = await lib.getDocument({ data: f.bytes.slice(), isEvalSupported: false }).promise; d.destroy(); }
+  catch (e) { if (/password/i.test((e && (e.name + ' ' + e.message)) || '')) protegido = true; else { fail(e); return; } }
+  if (!protegido) { toast('Este PDF no tiene contraseña de apertura. Para quitar bloqueos de edición o impresión usa «Quitar contraseña / restricciones».'); return; }
   const sc = div('scrim');
   sc.innerHTML = `<div class="dlg" role="dialog" aria-modal="true"><header><h2>Recuperar contraseña</h2></header>
     <div class="body">
-      <p class="note">Archivo propio: <b>${esc(f.name)}</b>. Recupera una contraseña olvidada de un documento que te pertenece.</p>
-      <label class="note">Tipo de contraseña</label>
-      <select class="txt" id="ckTarget"><option value="user">De apertura (para abrir el PDF)</option><option value="owner">De propietario (permisos de edición/impresión)</option></select>
+      <p class="note">Archivo propio: <b>${esc(f.name)}</b>. Recupera la contraseña de apertura olvidada de un documento que te pertenece. Se procesa en tu equipo, sin programas externos.</p>
       <label class="note">Método</label>
-      <select class="txt" id="ckMode"><option value="brute">Fuerza bruta</option><option value="dict">Diccionario (lista de palabras)</option></select>
-      <div id="ckBrute">
+      <select class="txt" id="ckMode"><option value="dict">Diccionario (lista de palabras)</option><option value="brute">Fuerza bruta</option></select>
+      <div id="ckDict"><button class="btn" id="ckPick">Elegir lista…</button> <span class="note" id="ckWL">ninguna</span></div>
+      <div id="ckBrute" hidden>
         <label class="note">Caracteres a probar</label>
         <input class="txt" id="ckCharset" value="0123456789" placeholder="p.ej. abc...xyz0123456789">
-        <div style="display:flex;gap:8px"><input class="txt" id="ckMin" type="number" min="1" value="1" placeholder="Longitud mín."><input class="txt" id="ckMax" type="number" min="1" value="5" placeholder="Longitud máx."></div>
+        <div style="display:flex;gap:8px"><input class="txt" id="ckMin" type="number" min="1" value="1" placeholder="Long. mín."><input class="txt" id="ckMax" type="number" min="1" value="4" placeholder="Long. máx."></div>
+        <p class="note">La fuerza bruta puede tardar mucho con contraseñas largas.</p>
       </div>
-      <div id="ckDict" hidden><button class="btn" id="ckPick">Elegir lista…</button> <span class="note" id="ckWL">ninguna</span></div>
     </div>
     <footer><button class="btn" data-x>Cancelar</button><button class="btn primary" data-go>Iniciar</button></footer></div>`;
   document.body.appendChild(sc);
   let wordlist = null;
   const mode = $('#ckMode', sc);
-  const sync = () => { $('#ckBrute', sc).hidden = mode.value !== 'brute'; $('#ckDict', sc).hidden = mode.value !== 'dict'; };
+  const sync = () => { $('#ckDict', sc).hidden = mode.value !== 'dict'; $('#ckBrute', sc).hidden = mode.value !== 'brute'; };
   mode.onchange = sync; sync();
-  $('#ckPick', sc).onclick = async () => { const p = await NATIVE.pickWordlist(); if (p) { wordlist = p; $('#ckWL', sc).textContent = fileBase(p); } };
+  $('#ckPick', sc).onclick = async () => {
+    let txt = null, nm = null;
+    if (NATIVE && NATIVE.pickWordlist && NATIVE.readFile) { const p = await NATIVE.pickWordlist(); if (p) { const fr = await NATIVE.readFile(p); if (fr) { txt = new TextDecoder().decode(new Uint8Array(fr.data)); nm = fileBase(p); } } }
+    else { txt = await new Promise(res => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.txt,text/plain'; inp.onchange = async () => { const fl = inp.files[0]; nm = fl ? fl.name : null; res(fl ? await fl.text() : null); }; inp.click(); }); }
+    if (txt != null) { wordlist = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean); $('#ckWL', sc).textContent = (nm || 'lista') + ' (' + wordlist.length + ' palabras)'; }
+  };
   const params = await new Promise(res => {
     sc.addEventListener('click', e => {
       if (e.target.closest('[data-x]') || e.target === sc) { sc.remove(); res(null); }
-      else if (e.target.closest('[data-go]')) {
-        const p = { target: $('#ckTarget', sc).value, mode: mode.value, wordlist, charset: $('#ckCharset', sc).value.trim(), minlen: +$('#ckMin', sc).value || 1, maxlen: +$('#ckMax', sc).value || 5 };
-        sc.remove(); res(p);
-      }
+      else if (e.target.closest('[data-go]')) { res({ mode: mode.value, charset: $('#ckCharset', sc).value.trim(), minlen: +$('#ckMin', sc).value || 1, maxlen: +$('#ckMax', sc).value || 4 }); sc.remove(); }
     });
   });
   if (!params) return;
-  if (params.mode === 'dict' && !params.wordlist) { toast('Elige una lista de palabras.', true); return; }
-  if (!recoverFlow._wired) { recoverFlow._wired = true; NATIVE.onCrackProgress(p => { if (busyEl && recoverFlow._on) $('#bD', busyEl).textContent = (p.now ? 'Probando: ' + p.now : '') + (p.speed ? '  ·  ' + p.speed + ' claves/s' : ''); }); }
-  recoverFlow._on = true;
+  let gen;
+  if (params.mode === 'dict') { if (!wordlist || !wordlist.length) { toast('Elige una lista de palabras.', true); return; } gen = wordlist[Symbol.iterator](); }
+  else gen = bruteGen(params.charset, params.minlen, params.maxlen);
   busy(true, 'Recuperando contraseña…', f.name, null, true);
   busyCancel = false;
-  const watch = setInterval(() => { if (busyCancel) NATIVE.cancelCrack(); }, 400);
   let r;
-  try { r = await NATIVE.crackPdf({ buffer: f.bytes, mode: params.mode, wordlist: params.wordlist, charset: params.charset, minlen: params.minlen, maxlen: params.maxlen, target: params.target }); }
-  catch (e) { r = { success: false, error: (e && e.message) || 'Error' }; }
-  clearInterval(watch); recoverFlow._on = false; busy(false);
-  if (r && r.success) {
-    await ask({ title: 'Contraseña encontrada', body: `<p class="note">Contraseña de «${esc(f.name)}»:</p><input class="txt" readonly value="${esc(r.password)}" onclick="this.select()">`, buttons: [{ label: 'Cerrar', value: null, primary: true }] });
-  } else if (busyCancel) { toast('Recuperación cancelada.'); }
-  else { toast((r && r.error) || 'No se encontró la contraseña.', true); }
+  try { r = await recoverOpenPassword(f.bytes, gen, (pwd, n) => { if (busyEl) $('#bD', busyEl).textContent = 'Probadas: ' + n + '  ·  ' + pwd; }); }
+  catch (e) { busy(false); fail(e); return; }
+  busy(false);
+  if (r && r.password != null) {
+    await ask({ title: 'Contraseña encontrada', body: `<p class="note">Contraseña de «${esc(f.name)}» (${r.tried} intento${r.tried > 1 ? 's' : ''}):</p><input class="txt" readonly value="${esc(r.password)}" onclick="this.select()">`, buttons: [{ label: 'Cerrar', value: null, primary: true }] });
+  } else if (r && r.cancelled) { toast('Recuperación cancelada.'); }
+  else { toast('No se encontró la contraseña con estos parámetros.', true); }
 }
 function closeFileMenu() { $('#backstage').hidden = true; }
 async function openFileMenu() {
@@ -3484,7 +3515,7 @@ async function openFileMenu() {
     item('compress', 'Comprimir PDF', 'compress') +
     '<div class="bssep"></div>' +
     item('lock', 'Quitar contraseña / restricciones', 'unlock') +
-    (NATIVE ? item('lock', 'Recuperar contraseña olvidada', 'recover', 'Archivos propios') : '') +
+    item('lock', 'Recuperar contraseña olvidada', 'recover', 'Archivos propios') +
     item('print', 'Imprimir', 'print', 'Ctrl+P') +
     item('info', 'Propiedades', 'props') +
     '<div class="bssep"></div>' +
