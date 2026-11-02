@@ -186,6 +186,56 @@ app.whenReady().then(() => {
     return { success: true, filePath };
   });
 
+  // recuperación de la contraseña de un PDF propio con el binario local pdfcrack
+  let crackChild = null;
+  const findPdfcrack = () => {
+    const exe = process.platform === 'win32' ? 'pdfcrack.exe' : 'pdfcrack';
+    const dirs = [process.resourcesPath, path.join(process.resourcesPath || '', 'bin'), app.getAppPath(), path.dirname(process.execPath)];
+    for (const d of dirs) { try { const p = path.join(d || '', exe); if (fs.existsSync(p)) return p; } catch (e) {} }
+    return exe; // recurrir al PATH
+  };
+  ipcMain.handle('pliego:pick-wordlist', async () => {
+    const r = await dialog.showOpenDialog(win, { title: 'Elegir lista de palabras', defaultPath: lastDir, properties: ['openFile'], filters: [{ name: 'Texto (*.txt)', extensions: ['txt'] }, { name: 'Todos los archivos', extensions: ['*'] }] });
+    return (r.canceled || !r.filePaths.length) ? null : r.filePaths[0];
+  });
+  ipcMain.handle('pliego:crack-cancel', () => { try { if (crackChild) crackChild.kill(); } catch (e) {} crackChild = null; return true; });
+  ipcMain.handle('pliego:crack-pdf', async (_e, { buffer, bytes, mode, wordlist, charset, minlen, maxlen, target }) => {
+    const { spawn } = require('child_process');
+    const os = require('os');
+    const bin = findPdfcrack();
+    const tmp = path.join(os.tmpdir(), 'pliego_crack_' + Date.now() + '.pdf');
+    try { await fs.promises.writeFile(tmp, Buffer.from(buffer || bytes)); } catch (e) { return { success: false, error: 'No se pudo preparar el archivo temporal.' }; }
+    const args = ['-f', tmp];
+    if (target === 'user') args.push('-u'); // recuperar la contraseña de apertura
+    if (mode === 'dict' && wordlist) { args.push('-w', wordlist); }
+    else {
+      if (charset) args.push('-c', charset);
+      if (minlen) args.push('-n', String(minlen));
+      if (maxlen) args.push('-m', String(maxlen));
+    }
+    const limpiar = () => { fs.promises.unlink(tmp).catch(() => {}); crackChild = null; };
+    return new Promise((resolve) => {
+      let child;
+      try { child = spawn(bin, args); } catch (e) { limpiar(); return resolve({ success: false, error: 'No se encontró pdfcrack. Coloca pdfcrack.exe junto a la aplicación o en el PATH.' }); }
+      crackChild = child;
+      let out = '', done = false;
+      const fin = (r) => { if (done) return; done = true; limpiar(); resolve(r); };
+      const leer = (d) => {
+        const s = d.toString(); out += s;
+        const m = s.match(/Now searching:\s*(.+)/); if (m && win) win.webContents.send('pliego:crack-progress', { now: m[1].trim() });
+        const sp = s.match(/Average Speed:\s*([\d.]+)/); if (sp && win) win.webContents.send('pliego:crack-progress', { speed: sp[1] });
+      };
+      child.stdout.on('data', leer);
+      child.stderr.on('data', leer);
+      child.on('error', () => fin({ success: false, error: 'No se encontró pdfcrack. Coloca pdfcrack.exe junto a la aplicación o en el PATH.' }));
+      child.on('close', () => {
+        const fp = out.match(/found\s+(?:user|owner|user\/owner)-password:\s*'([^']*)'/i);
+        if (fp) fin({ success: true, password: fp[1] });
+        else fin({ success: false, notFound: true, error: 'No se halló la contraseña con estos parámetros.' });
+      });
+    });
+  });
+
   ipcMain.handle('pliego:save-pdf-file', async (_e, { buffer, bytes, defaultName }) => {
     const { canceled, filePath } = await dialog.showSaveDialog(win, { title: 'Guardar PDF escalado', defaultPath: path.join(lastDir, defaultName || 'documento.pdf'), filters: [{ name: 'Documento PDF (*.pdf)', extensions: ['pdf'] }] });
     if (canceled || !filePath) return { success: false };
