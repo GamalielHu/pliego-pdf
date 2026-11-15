@@ -2552,24 +2552,83 @@ async function rasterPdf(bytes, o) {
 
 /* ---- comprimir ---- */
 const CMP = { low: { dpi: 200, k: 0.85, q: 0.8 }, mid: { dpi: 150, q: 0.65 }, high: { dpi: 96, q: 0.45, strip: true } };
+const CMPNAME = { low: 'Baja · calidad alta', mid: 'Media · equilibrada', high: 'Alta · máxima reducción' };
+// escalera de ajustes de mayor a menor calidad (para alcanzar un peso objetivo)
+const CMPLADDER = [{ dpi: 200, q: 0.9 }, { dpi: 200, q: 0.8 }, { dpi: 160, q: 0.7 }, { dpi: 150, q: 0.6 }, { dpi: 120, q: 0.5 }, { dpi: 96, q: 0.45, strip: true }, { dpi: 80, q: 0.4, strip: true }, { dpi: 72, q: 0.35, strip: true }, { dpi: 60, q: 0.3, strip: true }];
 const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+// estima el tamaño comprimido rasterizando unas páginas de muestra y extrapolando
+async function estimateCompressed(src, opts, samples) {
+  let total = 0;
+  for (const i of samples) {
+    const pg = await src.getPage(i), v1 = pg.getViewport({ scale: 1 });
+    let sc = opts.dpi / 72 * (opts.k || 1);
+    if (v1.width * v1.height * sc * sc > 3.3e7) sc = Math.sqrt(3.3e7 / (v1.width * v1.height));
+    const c = await renderToCanvas(pg, sc, opts.filter, opts.strip);
+    const b = await new Promise(r => c.toBlob(r, 'image/jpeg', opts.q)); c.width = c.height = 0;
+    total += b.size;
+  }
+  return Math.round(total / samples.length * src.numPages + 2048);
+}
 async function openCompress() {
   if (!S.pages.length) { toast('Primero abre un documento.'); return; }
   finishEditing();
-  const r = await ask({
-    title: 'Comprimir PDF',
-    body: `<p class="note"><b>Baja</b>: calidad alta, imágenes al 85 %, JPEG 0,8.<br><b>Media</b>: máximo 150 ppp, JPEG 0,65.<br><b>Alta</b>: máximo 96 ppp, JPEG 0,45, sin metadatos ni anotaciones.</p><p class="note">Las páginas se guardan como imagen: el texto deja de poder seleccionarse.</p>`,
-    buttons: [{ label: 'Cancelar', value: null }, { label: 'Baja', value: 'low' }, { label: 'Media', value: 'mid', primary: true }, { label: 'Alta', value: 'high' }]
-  });
-  if (!r) return;
+  let base, src;
   try {
+    busy(true, 'Preparando…', 'Leyendo el documento', 0);
+    base = await buildPdf(S.pages, { searchable: false, filter: false, progress: (i, n) => busy(true, 'Preparando…', `Página ${i + 1} de ${n}`, (i / n) * 100) });
+    const lib = await ensurePdf();
+    src = await lib.getDocument({ data: base.slice(), isEvalSupported: false }).promise;
+    busy(false);
+  } catch (e) { busy(false); fail(e); return; }
+  const n = src.numPages, filter = PF[S.filter];
+  const samples = [...new Set([1, Math.max(1, Math.ceil(n / 2))])];
+  const sc = div('scrim');
+  sc.innerHTML = `<div class="dlg" role="dialog" aria-modal="true"><header><h2>Comprimir PDF</h2></header>
+    <div class="body">
+      <p class="note">Tamaño actual: <b>${kb(base.length)}</b> · ${n} página${n > 1 ? 's' : ''}. Las páginas se guardan como imagen (el texto deja de poder seleccionarse).</p>
+      <label class="note" style="font-weight:600;display:block;margin-top:4px">Tipo de compresión (tamaño aproximado)</label>
+      ${['low', 'mid', 'high'].map(k => `<label style="display:flex;align-items:center;gap:8px;margin:4px 0;cursor:pointer"><input type="radio" name="cmp" value="${k}"${k === 'mid' ? ' checked' : ''}><span>${CMPNAME[k]}</span><span class="note" data-est="${k}" style="margin-left:auto">calculando…</span></label>`).join('')}
+      <label class="note" style="font-weight:600;display:block;margin-top:10px">O indica el peso máximo</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+        <input class="txt" id="cmpTarget" type="number" min="0" step="0.1" placeholder="p. ej. 2" style="max-width:110px">
+        <select class="txt" id="cmpUnit" style="max-width:90px"><option value="MB">MB</option><option value="KB">KB</option></select>
+        <span class="note">Ajusto la calidad para no pasarme.</span>
+      </div>
+    </div>
+    <footer><button class="btn" data-x>Cancelar</button><button class="btn primary" data-go>Comprimir</button></footer></div>`;
+  document.body.appendChild(sc);
+  (async () => { for (const k of ['low', 'mid', 'high']) { try { const est = await estimateCompressed(src, { ...CMP[k], filter }, samples); const o = $(`[data-est="${k}"]`, sc); if (o) o.textContent = '≈ ' + kb(est); } catch (e) {} } })();
+  const choice = await new Promise(res => {
+    sc.addEventListener('click', e => {
+      if (e.target.closest('[data-x]') || e.target === sc) { sc.remove(); res(null); }
+      else if (e.target.closest('[data-go]')) {
+        const tv = parseFloat($('#cmpTarget', sc).value), unit = $('#cmpUnit', sc).value;
+        const preset = (sc.querySelector('input[name=cmp]:checked') || {}).value || 'mid';
+        res({ target: tv > 0 ? tv * (unit === 'MB' ? 1048576 : 1024) : 0, preset }); sc.remove();
+      }
+    });
+  });
+  if (!choice) { try { src.destroy(); } catch (e) {} return; }
+  try {
+    let opts, noReach = false;
+    if (choice.target) {
+      busy(true, 'Calculando el mejor ajuste…', '', 0);
+      for (const cand of CMPLADDER) { const est = await estimateCompressed(src, { ...cand, filter }, samples); if (est <= choice.target * 0.98) { opts = { ...cand, filter }; break; } }
+      if (!opts) { opts = { ...CMPLADDER[CMPLADDER.length - 1], filter }; noReach = true; }
+    } else { opts = { ...CMP[choice.preset], filter }; }
     busy(true, 'Comprimiendo…', 'Aplicando tus cambios', 0);
-    const base = await buildPdf(S.pages, { searchable: false, filter: false, progress: (i, n) => busy(true, 'Comprimiendo…', `Página ${i + 1} de ${n}`, (i / n) * 30) });
-    const bytes = await rasterPdf(base, { ...CMP[r.value], filter: PF[S.filter], progress: (i, n) => busy(true, 'Comprimiendo…', `Página ${i + 1} de ${n}`, 30 + (i / n) * 68) });
+    const bytes = await rasterPdf(base, { ...opts, progress: (i, nn) => busy(true, 'Comprimiendo…', `Página ${i + 1} de ${nn}`, (i / nn) * 100) });
+    try { src.destroy(); } catch (e) {}
     busy(false);
     const p = await saveBlob(new Blob([bytes], { type: 'application/pdf' }), S.name.replace(/[\\/:*?"<>|]+/g, '-') + '-comprimido.pdf');
-    if (p) toast(`${kb(base.length)} → ${kb(bytes.length)}${bytes.length >= base.length ? ' (no se redujo; prueba un nivel mayor)' : ''}`);
-  } catch (e) { fail(e); }
+    if (p) {
+      let msg = `${kb(base.length)} → ${kb(bytes.length)}`;
+      if (bytes.length >= base.length) msg += ' (no se redujo; prueba un nivel mayor)';
+      else if (noReach) msg += ' (no se pudo bajar más)';
+      else if (choice.target && bytes.length > choice.target) msg += ' (aprox., algo por encima del objetivo)';
+      toast(msg);
+    }
+  } catch (e) { try { src.destroy(); } catch (_) {} fail(e); }
 }
 
 /* ---- unir PDFs ---- */
