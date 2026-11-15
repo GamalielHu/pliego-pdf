@@ -2553,9 +2553,25 @@ async function rasterPdf(bytes, o) {
 /* ---- comprimir ---- */
 const CMP = { low: { dpi: 200, k: 0.85, q: 0.8 }, mid: { dpi: 150, q: 0.65 }, high: { dpi: 96, q: 0.45, strip: true } };
 const CMPNAME = { low: 'Baja · calidad alta', mid: 'Media · equilibrada', high: 'Alta · máxima reducción' };
-// escalera de ajustes de mayor a menor calidad (para alcanzar un peso objetivo)
-const CMPLADDER = [{ dpi: 200, q: 0.9 }, { dpi: 200, q: 0.8 }, { dpi: 160, q: 0.7 }, { dpi: 150, q: 0.6 }, { dpi: 120, q: 0.5 }, { dpi: 96, q: 0.45, strip: true }, { dpi: 80, q: 0.4, strip: true }, { dpi: 72, q: 0.35, strip: true }, { dpi: 60, q: 0.3, strip: true }];
+// resoluciones candidatas para el peso objetivo (de mayor a menor): en cada una se busca la mejor calidad JPEG
+const CMPDPIS = [255, 220, 200, 170, 150, 120, 96, 72];
 const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+// busca el ajuste para no pasar del peso objetivo: conserva la resolución más alta posible y, en ella, la calidad JPEG más alta que quepa (búsqueda binaria), como un script de compresión por objetivo
+async function searchTarget(src, target, filter, samples) {
+  for (const dpi of CMPDPIS) {
+    const strip = dpi <= 110;
+    const estMin = await estimateCompressed(src, { dpi, q: 0.3, filter, strip }, samples);
+    if (estMin > target) continue; // ni con calidad baja cabe en esta resolución: probar una menor
+    let lo = 0.3, hi = 0.92, best = 0.3;
+    for (let it = 0; it < 7; it++) {
+      const mid = (lo + hi) / 2;
+      const est = await estimateCompressed(src, { dpi, q: mid, filter, strip }, samples);
+      if (est <= target * 0.98) { best = mid; lo = mid; } else { hi = mid; }
+    }
+    return { dpi, q: Math.round(best * 100) / 100, filter, strip };
+  }
+  return null; // ni la menor resolución cabe en el objetivo
+}
 // estima el tamaño comprimido rasterizando unas páginas de muestra y extrapolando
 async function estimateCompressed(src, opts, samples) {
   let total = 0;
@@ -2613,8 +2629,8 @@ async function openCompress() {
     let opts, noReach = false;
     if (choice.target) {
       busy(true, 'Calculando el mejor ajuste…', '', 0);
-      for (const cand of CMPLADDER) { const est = await estimateCompressed(src, { ...cand, filter }, samples); if (est <= choice.target * 0.98) { opts = { ...cand, filter }; break; } }
-      if (!opts) { opts = { ...CMPLADDER[CMPLADDER.length - 1], filter }; noReach = true; }
+      opts = await searchTarget(src, choice.target, filter, samples);
+      if (!opts) { opts = { dpi: 72, q: 0.3, filter, strip: true }; noReach = true; }
     } else { opts = { ...CMP[choice.preset], filter }; }
     busy(true, 'Comprimiendo…', 'Aplicando tus cambios', 0);
     const bytes = await rasterPdf(base, { ...opts, progress: (i, nn) => busy(true, 'Comprimiendo…', `Página ${i + 1} de ${nn}`, (i / nn) * 100) });
