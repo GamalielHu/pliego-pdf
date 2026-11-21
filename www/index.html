@@ -297,13 +297,23 @@ input[type=range]{width:96px;accent-color:var(--accent)}
 /* menú Archivo (backstage) estilo Foxit */
 #fileBtn{height:30px;padding:0 14px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font:600 13px var(--f-ui);display:flex;align-items:center;gap:6px;flex:none}
 #fileBtn:hover{filter:brightness(1.05)}
-#backstage{position:fixed;inset:0;z-index:70;background:rgba(20,18,16,.45);display:flex}
+#backstage{position:fixed;inset:0;z-index:70;background:transparent}
 #backstage[hidden]{display:none}
-#backstage .bs{background:var(--surface);color:var(--ink);width:min(560px,100%);height:100%;box-shadow:var(--shadow);display:flex;flex-direction:column;animation:bsin .14s ease}
-@keyframes bsin{from{transform:translateX(-14px);opacity:.4}to{transform:none;opacity:1}}
-#backstage header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
-#backstage header h2{margin:0;font:600 17px var(--f-display)}
-#backstage .bsbody{flex:1;overflow:auto;padding:8px}
+#backstage .bs{position:absolute;top:46px;left:8px;background:var(--surface);color:var(--ink);width:min(300px,92vw);max-height:78vh;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;animation:bsin .12s ease}
+@keyframes bsin{from{transform:translateY(-8px);opacity:.3}to{transform:none;opacity:1}}
+#backstage header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+#backstage header h2{margin:0;font:600 13px var(--f-display)}
+#backstage .bsbody{flex:1;overflow:auto;padding:6px}
+/* barra de pestañas (varios PDF abiertos a la vez) */
+#tabbar{display:flex;align-items:stretch;gap:3px;padding:4px 8px 0;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--accent-soft)}
+#tabbar[hidden]{display:none}
+#tabbar .tab{display:flex;align-items:center;gap:6px;max-width:210px;padding:6px 7px 6px 12px;border:1px solid var(--line);border-bottom:none;border-radius:9px 9px 0 0;background:transparent;color:var(--muted);font:500 12px var(--f-ui);cursor:pointer;flex:none}
+#tabbar .tab.on{background:var(--surface);color:var(--ink);box-shadow:0 2px 0 var(--surface)}
+#tabbar .tab>span{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tabbar .tab .x{width:17px;height:17px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;color:var(--muted);flex:none}
+#tabbar .tab .x:hover{background:var(--line);color:var(--ink)}
+#tabbar .tabadd{flex:none;min-width:30px;border-radius:8px;color:var(--muted);font-size:18px;align-self:center;margin-bottom:3px}
+#tabbar .tabadd:hover{background:var(--surface);color:var(--ink)}
 .bsitem{display:flex;align-items:center;gap:12px;width:100%;padding:11px 14px;border-radius:9px;font:500 14px var(--f-ui);color:var(--ink);text-align:left}
 .bsitem:hover{background:var(--accent-soft)}
 .bsitem .ic{width:20px;height:20px;flex:none;color:var(--muted)}
@@ -405,6 +415,8 @@ input[type=range]{width:96px;accent-color:var(--accent)}
     <button id="bSave" class="btn" title="Guardar (Ctrl+S)" hidden><svg class="ic"><use href="#i-save"/></svg><span class="lbl">Guardar</span></button>
     <button id="bExport" class="btn primary" title="Exportar"><svg class="ic"><use href="#i-down"/></svg><span class="lbl">Exportar</span></button>
   </header>
+
+  <div id="tabbar" hidden></div>
 
   <nav id="tools" aria-label="Herramientas">
     <button class="tool on" data-tool="select"><svg class="ic"><use href="#i-select"/></svg>Seleccionar</button>
@@ -617,8 +629,12 @@ const S = {
   },
   ocrLang: 'spa+eng',
   filter: 'none',
-  found: [], foundIdx: -1
+  found: [], foundIdx: -1,
+  docId: 'd0'
 };
+// pestañas: varios documentos abiertos a la vez. Cada documento guarda estos campos de S; el resto (herramienta, estilo, OCR idioma) es compartido.
+let DOCS = [], DACT = 0, docN = 0;
+const PDOC = ['sources', 'pages', 'zoom', 'fit', 'sel', 'editing', 'savedRange', 'current', 'hist', 'fut', 'dirty', 'name', 'filePath', 'filter', 'found', 'foundIdx', 'docId'];
 const ocrStore = new Map();   // "src:idx" -> [{x,b,w,fs,text}]
 const runCache = new Map();   // "src:idx" -> Promise<runs>
 const thumbCache = new Map(); // "src:idx" -> Promise<canvas>
@@ -644,7 +660,7 @@ const ASSETS = new Map(); let assetN = 0;
 const addAsset = src => { const k = 'a' + (++assetN); ASSETS.set(k, src); return k; };
 const srcOf = o => o.asset ? ASSETS.get(o.asset) : o.src;
 const nid = () => 'o' + (uidN++).toString(36) + Math.random().toString(36).slice(2, 6);
-const keyOf = p => p.src + ':' + p.idx;
+const keyOf = p => S.docId + ':' + p.src + ':' + p.idx;
 const pageById = id => S.pages.find(p => p.id === id);
 const pageIndex = id => S.pages.findIndex(p => p.id === id);
 const div = (cls) => { const d = document.createElement('div'); if (cls) d.className = cls; return d; };
@@ -850,10 +866,11 @@ async function openFiles(files, mode) {
 async function openNative(list, mode) {
   if (!list || !list.length) return;
   const files = list.map(f => new File([f.data], f.name, { type: /\.pdf$/i.test(f.name) ? 'application/pdf' : '' }));
+  if (!mode) { await openEntry(files, list); return; }
   const m = await openFiles(files, mode);
   if (m === 'replace' && list.length === 1 && /\.pdf$/i.test(list[0].name)) { S.filePath = list[0].path; updateTitle(); rememberRecent(S.filePath, S.name); }
 }
-function updateTitle() { document.title = S.pages.length ? `${S.name}${S.dirty ? ' •' : ''} — Pliego` : 'Pliego · Editor PDF'; }
+function updateTitle() { document.title = S.pages.length ? `${S.name}${S.dirty ? ' •' : ''} — Pliego` : 'Pliego · Editor PDF'; if (DOCS.length > 1) renderTabs(); }
 async function quickSave() {
   if (!S.pages.length) return;
   if (!NATIVE || !S.filePath) { openExport('pdf'); return; }
@@ -873,6 +890,7 @@ function showDoc() {
   updateTitle();
   if (S.fit) S.zoom = fitZoom();
   buildViewer();
+  renderTabs();
 }
 
 /* ================================================================
@@ -3424,6 +3442,75 @@ function nuevoDoc() {
   S.hist = []; S.fut = []; S.dirty = false; S.name = 'documento'; S.filePath = null;
   updateUndo(); showDoc(); updateTitle();
 }
+
+/* ===== pestañas: varios PDF abiertos a la vez (sin abrir otra ventana) ===== */
+function newDocState() { return { sources: [], pages: [], zoom: 1, fit: true, sel: null, editing: null, savedRange: null, current: 0, hist: [], fut: [], dirty: false, name: 'documento', filePath: null, filter: 'none', found: [], foundIdx: -1, docId: 'd' + (++docN) }; }
+function tabsInit() { DOCS = [{}]; for (const f of PDOC) DOCS[0][f] = S[f]; DACT = 0; renderTabs(); }
+function docSnapshot() { for (const f of PDOC) DOCS[DACT][f] = S[f]; }
+function docLoad(i) { for (const f of PDOC) S[f] = DOCS[i][f]; }
+function switchDoc(i) {
+  if (i === DACT || i < 0 || i >= DOCS.length) return;
+  finishEditing(); closeFileMenu();
+  docSnapshot(); DACT = i; docLoad(i);
+  updateUndo(); showDoc(); renderTabs();
+}
+function newTab() {
+  finishEditing(); docSnapshot();
+  const d = newDocState(); DOCS.push(d); DACT = DOCS.length - 1; docLoad(DACT);
+  updateUndo(); showDoc(); renderTabs();
+}
+function purgeDocCaches(id) {
+  const pref = id + ':';
+  for (const m of [runCache, thumbCache, ocrStore]) for (const k of [...m.keys()]) if (k.startsWith(pref)) m.delete(k);
+}
+function closeTab(i) {
+  if (i < 0 || i >= DOCS.length) return;
+  const act = i === DACT;
+  const dirty = act ? S.dirty : DOCS[i].dirty, pages = act ? S.pages.length : DOCS[i].pages.length;
+  if (dirty && pages && !confirm('Este documento tiene cambios sin guardar. ¿Cerrarlo igual?')) return;
+  purgeDocCaches(act ? S.docId : DOCS[i].docId);
+  if (DOCS.length === 1) { DOCS[0] = newDocState(); DACT = 0; docLoad(0); updateUndo(); showDoc(); renderTabs(); return; }
+  DOCS.splice(i, 1);
+  if (act) { DACT = Math.min(i, DOCS.length - 1); docLoad(DACT); updateUndo(); showDoc(); }
+  else if (i < DACT) DACT--;
+  renderTabs();
+}
+function renderTabs() {
+  const bar = $('#tabbar'); if (!bar) return;
+  const show = DOCS.length > 1 || (DOCS.length === 1 && (DACT === 0 ? S.pages.length : DOCS[0].pages.length));
+  bar.hidden = !show;
+  if (!show) { bar.innerHTML = ''; return; }
+  bar.innerHTML = DOCS.map((d, i) => {
+    const name = i === DACT ? S.name : d.name, dirty = i === DACT ? S.dirty : d.dirty, has = i === DACT ? S.pages.length : d.pages.length;
+    const label = (has ? (name || 'documento') : '(vacío)') + (dirty ? ' •' : '');
+    return `<div class="tab${i === DACT ? ' on' : ''}" data-tab="${i}" title="${esc(label)}"><span>${esc(label)}</span><button class="x" data-close="${i}" title="Cerrar" aria-label="Cerrar">×</button></div>`;
+  }).join('') + '<button class="tabadd" id="tabAdd" title="Abrir otro PDF" aria-label="Abrir otro PDF">+</button>';
+}
+// abrir archivos: si el documento actual está vacío los carga ahí; si no, pregunta pestaña nueva o añadir
+async function openEntry(files, nativeList) {
+  files = [...files]; if (!files.length) return;
+  if (!S.pages.length) { const m = await openFiles(files, 'replace'); if (m) setNativePath(nativeList); renderTabs(); return; }
+  const r = await ask({ title: 'Abrir', body: `<p class="note">¿Cómo quieres abrir ${files.length > 1 ? 'estos archivos' : 'este archivo'}?</p>`, buttons: [{ label: 'Cancelar', value: null }, { label: 'Añadir a este', value: 'append' }, { label: 'Pestaña nueva', value: 'newtab', primary: true }] });
+  if (!r) return;
+  if (r.value === 'append') { await openFiles(files, 'append'); renderTabs(); }
+  else await openInNewTab(files, nativeList);
+}
+async function openInNewTab(files, nativeList) {
+  finishEditing(); docSnapshot();
+  const d = newDocState(); DOCS.push(d); DACT = DOCS.length - 1; docLoad(DACT); renderTabs();
+  const m = await openFiles(files, 'replace');
+  if (!m || !S.pages.length) { DOCS.splice(DACT, 1); DACT = Math.min(DACT, DOCS.length - 1); docLoad(DACT); updateUndo(); showDoc(); renderTabs(); return; }
+  setNativePath(nativeList); renderTabs();
+}
+function setNativePath(list) {
+  if (NATIVE && list && list.length === 1 && /\.pdf$/i.test(list[0].name)) { S.filePath = list[0].path; updateTitle(); rememberRecent(S.filePath, S.name); }
+}
+async function addFilesToCurrent() {
+  if (NATIVE) { try { const list = await NATIVE.openDialog(); if (list && list.length) { await openNative(list, 'append'); renderTabs(); } } catch (e) { fail(e); } return; }
+  const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,.pdf,image/*';
+  inp.onchange = async () => { if (inp.files.length) { await openFiles([...inp.files], 'append'); renderTabs(); } };
+  inp.click();
+}
 async function docProps() {
   const n = S.pages.length;
   const dims = n ? (() => { const p = S.pages[0]; return `${Math.round(p.w * 25.4 / 72)} × ${Math.round(p.h * 25.4 / 72)} mm`; })() : '—';
@@ -3579,8 +3666,9 @@ async function openFileMenu() {
   const rec = NATIVE ? recientes() : [];
   const item = (ic, label, act, note) => `<button class="bsitem" data-fm="${act}"><svg class="ic"><use href="#i-${ic}"/></svg>${label}${note ? `<small>${note}</small>` : ''}</button>`;
   body.innerHTML =
-    item('new', 'Nuevo', 'new') +
+    item('new', 'Nuevo (pestaña)', 'new') +
     item('folder', 'Abrir…', 'open', 'Ctrl+O') +
+    item('merge', 'Añadir archivos a este', 'addfiles') +
     (rec.length ? `<div class="bshead">Recientes</div><div class="bsrecent">${rec.map((r, i) => `<button data-rec="${i}"><b>${esc(r.name)}</b><span>${esc(r.path)}</span></button>`).join('')}</div>` : '') +
     '<div class="bssep"></div>' +
     item('save', 'Guardar', 'save', 'Ctrl+S') +
@@ -3594,7 +3682,7 @@ async function openFileMenu() {
     item('print', 'Imprimir', 'print', 'Ctrl+P') +
     item('info', 'Propiedades', 'props') +
     '<div class="bssep"></div>' +
-    item('close', 'Cerrar documento', 'closedoc');
+    item('close', 'Cerrar pestaña', 'closedoc');
   bs.hidden = false;
   if (!openFileMenu._wired) {
     openFileMenu._wired = true;
@@ -3608,8 +3696,9 @@ async function openFileMenu() {
       if (act === 'unlock') return unlockFlow();
       if (act === 'recover') return recoverFlow();
       closeFileMenu();
-      if (act === 'new') nuevoDoc();
+      if (act === 'new') newTab();
       else if (act === 'open') pickOpen();
+      else if (act === 'addfiles') addFilesToCurrent();
       else if (act === 'save') quickSave();
       else if (act === 'export') openExport('pdf');
       else if (act === 'import') pickOpen();
@@ -3617,11 +3706,17 @@ async function openFileMenu() {
       else if (act === 'compress') openCompress();
       else if (act === 'print') printDoc();
       else if (act === 'props') docProps();
-      else if (act === 'closedoc') nuevoDoc();
+      else if (act === 'closedoc') closeTab(DACT);
     });
   }
 }
 $('#fileBtn').onclick = openFileMenu;
+$('#tabbar').addEventListener('click', e => {
+  const x = e.target.closest('[data-close]'); if (x) { e.stopPropagation(); closeTab(+x.dataset.close); return; }
+  if (e.target.closest('#tabAdd')) { pickOpen(); return; }
+  const t = e.target.closest('[data-tab]'); if (t) switchDoc(+t.dataset.tab);
+});
+tabsInit();
 $('#bOrg').onclick = openOrg;
 $('#bPrint').onclick = printDoc;
 $('#bMerge').onclick = () => { el.fileMerge.value = ''; el.fileMerge.click(); };
@@ -3635,7 +3730,7 @@ const pickOpen = async () => {
 const bSave = $('#bSave');
 if (NATIVE && bSave) { bSave.hidden = false; bSave.onclick = quickSave; }
 $('#bOpen').onclick = pickOpen; $('#wOpen').onclick = pickOpen;
-el.fileOpen.addEventListener('change', () => openFiles(el.fileOpen.files));
+el.fileOpen.addEventListener('change', () => openEntry([...el.fileOpen.files]));
 $('#wSample').onclick = async () => { try { busy(true, 'Creando el ejemplo…'); const f = await makeSample(); busy(false); await openFiles([f], 'replace'); toast('Prueba «Editar texto» en la página 1 y «OCR» en la página 2.'); } catch (e) { fail(e); } };
 el.pgIn.addEventListener('change', () => { const v = parseInt(el.pgIn.value); if (v) goToPage(v - 1); el.pgIn.blur(); });
 el.pgIn.addEventListener('focus', () => el.pgIn.select());
@@ -3644,7 +3739,7 @@ el.pgIn.addEventListener('focus', () => el.pgIn.select());
 const drop = $('#drop');
 ['dragenter', 'dragover'].forEach(t => window.addEventListener(t, e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); drop.classList.add('over'); } }));
 ['dragleave', 'drop'].forEach(t => window.addEventListener(t, () => drop.classList.remove('over')));
-window.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); openFiles(e.dataTransfer.files); } });
+window.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); openEntry([...e.dataTransfer.files]); } });
 
 // zoom con rueda + Ctrl y con pellizco
 el.viewer.addEventListener('wheel', e => {
